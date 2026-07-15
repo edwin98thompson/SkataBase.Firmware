@@ -156,9 +156,9 @@ bool sampleIMU(int16_t* outData) {
 
         // Convert raw values to standard units for the math filter
         // Accel: Convert to Gs (Default scale is 16384 LSB/g)
-        float ax = myIMU.agmt.acc.axes.x / 16384.0f;
-        float ay = myIMU.agmt.acc.axes.y / 16384.0f;
-        float az = myIMU.agmt.acc.axes.z / 16384.0f;
+        float ax = myIMU.agmt.acc.axes.x / 100.0f;
+        float ay = myIMU.agmt.acc.axes.y / 100.0f;
+        float az = myIMU.agmt.acc.axes.z / 100.0f;
 
         // Gyro: Convert raw to Degrees Per Second (Default scale is 131 LSB/dps)
         float gx = myIMU.agmt.gyr.axes.x / 131.0f;
@@ -170,27 +170,39 @@ bool sampleIMU(int16_t* outData) {
         float my = myIMU.agmt.mag.axes.y;
         float mz = myIMU.agmt.mag.axes.z;
 
+        float temp = myIMU.agmt.tmp.val / 333.87f + 21.0f; // Convert raw temp to Celsius
+
         // Feed data into the Madgwick algorithm
         // Note: If you experience compass interference, swap this line for:
         // filter.updateIMU(gx, gy, gz, ax, ay, az); 
-        filter.update(gx, gy, gz, ax, ay, az, mx, my, mz);
+        // filter.update(gx, gy, gz, ax, ay, az, mx, my, mz);
 
-        // Extract calculated quaternions (Values are clean floats from -1.0 to 1.0)
-        float q0 = filter.q0;
-        float q1 = filter.q1;
-        float q2 = filter.q2;
-        float q3 = filter.q3;
+        // // Extract calculated quaternions (Values are clean floats from -1.0 to 1.0)
+        // float q0 = filter.q0;
+        // float q1 = filter.q1;
+        // float q2 = filter.q2;
+        // float q3 = filter.q3;
 
         // Pack into your original int16_t BLE array indices
-        outData[0] = scaleFloatToInt16(q0, -1.0f, 1.0f);
-        outData[1] = scaleFloatToInt16(q1, -1.0f, 1.0f);
-        outData[2] = scaleFloatToInt16(q2, -1.0f, 1.0f);
-        outData[3] = scaleFloatToInt16(q3, -1.0f, 1.0f);
+        // outData[0] = scaleFloatToInt16(q0, -1.0f, 1.0f);
+        // outData[1] = scaleFloatToInt16(q1, -1.0f, 1.0f);
+        // outData[2] = scaleFloatToInt16(q2, -1.0f, 1.0f);
+        // outData[3] = scaleFloatToInt16(q3, -1.0f, 1.0f);
+        outData[0] = ax;
+        outData[1] = ay;
+        outData[2] = az;
+        outData[3] = gx;
+        outData[4] = gy;
+        outData[5] = gz;
+        outData[6] = mx;
+        outData[7] = my;
+        outData[8] = mz;
+        outData[9] = temp;
 
         // Zero out remaining slots to preserve your 10-element packet footprint
-        for(int i = 4; i < 10; i++) {
-            outData[i] = 0;
-        }
+        // for(int i = 4; i < 10; i++) {
+        //     outData[i] = 0;
+        // }
 
         return true;
     }

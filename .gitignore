@@ -1,0 +1,17 @@
+# PlatformIO
+.pio/
+.piolibdeps/
+
+# Python cache
+__pycache__/
+*.py[cod]
+
+# VS Code (ignore user-specific settings)
+.vscode/
+
+# macOS
+.DS_Store
+
+# Windows
+Thumbs.db
+Desktop.ini
