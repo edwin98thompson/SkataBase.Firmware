@@ -201,8 +201,6 @@ bool sampleIMU(float* outData) {
     float pitch = filter.getPitch();
     float yaw   = filter.getYaw();
 
-
-
     outData[0] = ax;
     outData[1] = ay;
     outData[2] = az;
