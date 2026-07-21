@@ -18,7 +18,6 @@ BLECharacteristic *pCharacteristic;
 bool deviceConnected = false;
 
 // Timing Variables
-unsigned long lastSRT = 0; // For tracking exact sample delta time
 unsigned long lastSendTime = 0;
 const unsigned long sendInterval = 20; // 50Hz transmission rate
 constexpr float FILTER_RATE = 228.0f;
@@ -146,9 +145,8 @@ void getAccelBias()
     Serial.print("✅ Accel Bias Z: "); Serial.println(accelBiasZ);
 }
 
-
 // IMU sampling and on-board fusion processing
-bool sampleIMU(float* outData) {
+bool sampleIMU(int16_t* outData) {
 
     if (!myIMU.dataReady())
     {
@@ -201,15 +199,13 @@ bool sampleIMU(float* outData) {
     float pitch = filter.getPitch();
     float yaw   = filter.getYaw();
 
-    outData[0] = ax;
-    outData[1] = ay;
-    outData[2] = az;
-    outData[3] = gx;
-    outData[4] = gy;
-    outData[5] = gz;
-    outData[6] = mx;
-    outData[7] = my;
-    outData[8] = mz;
+    outData[0] = int(roll * 100.0f);
+    outData[1] = int(pitch * 100.0f);
+    outData[2] = int(yaw * 100.0f);
+    outData[3] = int(filter.q0 * 10000.0f);
+    outData[4] = int(filter.q1 * 10000.0f);
+    outData[5] = int(filter.q2 * 10000.0f);
+    outData[6] = int(filter.q3 * 10000.0f);
     outData[9] = temp;
 
     // Monitor the actual sample rate once per second
@@ -226,18 +222,26 @@ bool sampleIMU(float* outData) {
     //     lastPrint = now;
     // }
 
-    // Serial.printf(
-    //     "Roll: %.2f Pitch: %.2f Yaw: %.2f\n",
-    //     roll,
-    //     pitch,
-    //     yaw
-    // );
+    Serial.printf(
+        "Roll: %.2f Pitch: %.2f Yaw: %.2f\n",
+        roll,
+        pitch,
+        yaw
+    );
+
+    Serial.printf(
+        "q0: %.2f q1: %.2f q2: %.2f q3: %.2f\n",
+        filter.q0,
+        filter.q1,
+        filter.q2,
+        filter.q3
+    );
 
     return true;
 }
 
 // Send BLE value
-void sendBLEPacket(float* data, size_t count) {
+void sendBLEPacket(int16_t* data, size_t count) {
     if (deviceConnected && pCharacteristic != nullptr) {
         pCharacteristic->setValue((uint8_t*)data, count * sizeof(int16_t));
         pCharacteristic->notify();
@@ -303,16 +307,17 @@ void setup() {
         Serial.println("Failed to set gyroscope sample rate");
     }
 
-    // ICM_20948_dlpcfg_t dlpf;
+    // Digital low pass filter configuration
+    ICM_20948_dlpcfg_t dlpf;
 
-    // dlpf.g = gyr_d119bw5_n154bw3;   // Example
-    // dlpf.a = /* accelerometer enum */;
+    dlpf.g = gyr_d119bw5_n154bw3;   // Example
+    dlpf.a = acc_d111bw4_n136bw;   // Example
 
-    // myIMU.enableDLPF(ICM_20948_Internal_Gyr, true);
-    // myIMU.enableDLPF(ICM_20948_Internal_Acc, true);
+    myIMU.enableDLPF(ICM_20948_Internal_Gyr, true);
+    myIMU.enableDLPF(ICM_20948_Internal_Acc, true);
 
-    // myIMU.setDLPFcfg(ICM_20948_Internal_Gyr, dlpf);
-    // myIMU.setDLPFcfg(ICM_20948_Internal_Acc, dlpf);
+    myIMU.setDLPFcfg(ICM_20948_Internal_Gyr, dlpf);
+    myIMU.setDLPFcfg(ICM_20948_Internal_Acc, dlpf);
 
     myIMU.startupMagnetometer();
 
@@ -324,8 +329,8 @@ void setup() {
     Serial.println("✅ Accelerometer calibration complete");
 
     // Madgwick filter setup
-    filter.begin(FILTER_RATE);      // 220Hz update rate
-    lastSRT = micros();
+    filter.begin(FILTER_RATE);      // 228Hz update rate
+    filter.beta = 0.4f;             // larger beta = more responsive, smaller beta = more stable
 
     // BLE setup
     BLEDevice::init("ESP32_SkateIMU");
@@ -347,7 +352,7 @@ void setup() {
 }
 
 void loop() {
-    static float imuData[10]; // Create an array of 10 items, initialized to zero
+    static int16_t imuData[10]; // Create an array of 10 items, initialized to zero
 
     // Keep pulling data to prevent the sensor's FIFO buffer from overflowing
     if (sampleIMU(imuData)) {
@@ -358,4 +363,3 @@ void loop() {
         }
     }
 }
-
