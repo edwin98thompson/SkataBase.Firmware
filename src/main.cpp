@@ -8,11 +8,11 @@
 #include <MadgwickAHRS.h> // Include the Madgwick Filter Library
 
 // BLE UUIDs
-#define SERVICE_UUID        "12345678-1234-1234-1234-1234567890ab"
+#define SERVICE_UUID "12345678-1234-1234-1234-1234567890ab"
 #define CHARACTERISTIC_UUID "abcd1234-ab12-cd34-ef56-abcdef123456"
 
 // BLE + IMU
-ICM_20948_I2C  myIMU;
+ICM_20948_I2C myIMU;
 Madgwick filter;
 BLECharacteristic *pCharacteristic;
 bool deviceConnected = false;
@@ -36,10 +36,9 @@ struct AccelCalibration
 };
 
 AccelCalibration accel =
-{
-    0,0,0,
-    1,1,1
-};
+    {
+        0, 0, 0,
+        1, 1, 1};
 
 struct MagCalibration
 {
@@ -49,11 +48,10 @@ struct MagCalibration
 };
 
 MagCalibration mag =
-{
-    0,
-    0,
-    0
-};
+    {
+        0,
+        0,
+        0};
 
 float gyroBiasX = 0.0;
 float gyroBiasY = 0.0;
@@ -68,13 +66,16 @@ float accelBiasZ = 0.0;
 int accelCalSamples = 1000;
 
 // BLE callbacks
-class MyServerCallbacks : public BLEServerCallbacks {
-    void onConnect(BLEServer *pServer) override {
+class MyServerCallbacks : public BLEServerCallbacks
+{
+    void onConnect(BLEServer *pServer) override
+    {
         deviceConnected = true;
         Serial.println("✅ BLE Client connected");
     }
 
-    void onDisconnect(BLEServer *pServer) override {
+    void onDisconnect(BLEServer *pServer) override
+    {
         deviceConnected = false;
         Serial.println("❌ BLE Client disconnected");
         pServer->startAdvertising();
@@ -82,11 +83,13 @@ class MyServerCallbacks : public BLEServerCallbacks {
 };
 
 // Utility: clamp and scale float to int16_t
-float clamp(float val, float minVal, float maxVal) {
+float clamp(float val, float minVal, float maxVal)
+{
     return (val < minVal) ? minVal : (val > maxVal ? maxVal : val);
 }
 
-int16_t scaleFloatToInt16(float val, float minVal, float maxVal) {
+int16_t scaleFloatToInt16(float val, float minVal, float maxVal)
+{
     val = clamp(val, minVal, maxVal);
     return (int16_t)((((val - minVal) / (maxVal - minVal)) * 65535.0f) - 32768.0f);
 }
@@ -99,8 +102,10 @@ void getGyroBias()
 
     Serial.println("🕒 Calibrating gyroscope...");
 
-    for (int i = 0; i < gyroCalSamples; i++) {
-        if (myIMU.dataReady()) {
+    for (int i = 0; i < gyroCalSamples; i++)
+    {
+        if (myIMU.dataReady())
+        {
             myIMU.getAGMT();
             sumX += myIMU.agmt.gyr.axes.x;
             sumY += myIMU.agmt.gyr.axes.y;
@@ -113,9 +118,12 @@ void getGyroBias()
     gyroBiasY = sumY / gyroCalSamples;
     gyroBiasZ = sumZ / gyroCalSamples;
 
-    Serial.print("✅ Gyro Bias X: "); Serial.println(gyroBiasX);
-    Serial.print("✅ Gyro Bias Y: "); Serial.println(gyroBiasY);
-    Serial.print("✅ Gyro Bias Z: "); Serial.println(gyroBiasZ);
+    Serial.print("✅ Gyro Bias X: ");
+    Serial.println(gyroBiasX);
+    Serial.print("✅ Gyro Bias Y: ");
+    Serial.println(gyroBiasY);
+    Serial.print("✅ Gyro Bias Z: ");
+    Serial.println(gyroBiasZ);
 }
 
 void getAccelBias()
@@ -126,8 +134,10 @@ void getAccelBias()
 
     Serial.println("🕒 Calibrating accelerometer...");
 
-    for (int i = 0; i < accelCalSamples; i++) {
-        if (myIMU.dataReady()) {
+    for (int i = 0; i < accelCalSamples; i++)
+    {
+        if (myIMU.dataReady())
+        {
             myIMU.getAGMT();
             sumX += myIMU.agmt.acc.axes.x;
             sumY += myIMU.agmt.acc.axes.y;
@@ -140,13 +150,17 @@ void getAccelBias()
     accelBiasY = sumY / accelCalSamples;
     accelBiasZ = sumZ / accelCalSamples;
 
-    Serial.print("✅ Accel Bias X: "); Serial.println(accelBiasX);
-    Serial.print("✅ Accel Bias Y: "); Serial.println(accelBiasY);
-    Serial.print("✅ Accel Bias Z: "); Serial.println(accelBiasZ);
+    Serial.print("✅ Accel Bias X: ");
+    Serial.println(accelBiasX);
+    Serial.print("✅ Accel Bias Y: ");
+    Serial.println(accelBiasY);
+    Serial.print("✅ Accel Bias Z: ");
+    Serial.println(accelBiasZ);
 }
 
 // IMU sampling and on-board fusion processing
-bool sampleIMU(int16_t* outData) {
+bool sampleIMU(int16_t *outData)
+{
 
     if (!myIMU.dataReady())
     {
@@ -161,9 +175,9 @@ bool sampleIMU(int16_t* outData) {
     const float az = (myIMU.agmt.acc.axes.z - accelBiasZ) / 8192.0f;
 
     // // Gyro: Convert raw to Degrees Per Second (Default scale is 131 LSB/dps)
-    float gx = (myIMU.agmt.gyr.axes.x - gyroBiasX) / 32.8f;
-    float gy = (myIMU.agmt.gyr.axes.y - gyroBiasY) / 32.8f;
-    float gz = (myIMU.agmt.gyr.axes.z - gyroBiasZ) / 32.8f;
+    float gx = (myIMU.agmt.gyr.axes.x - gyroBiasX) / 16.4f;
+    float gy = (myIMU.agmt.gyr.axes.y - gyroBiasY) / 16.4f;
+    float gz = (myIMU.agmt.gyr.axes.z - gyroBiasZ) / 16.4f;
 
     // // Magnetometer: Raw microteslas (µT) work fine directly
     float mx = myIMU.agmt.mag.axes.x;
@@ -192,12 +206,11 @@ bool sampleIMU(int16_t* outData) {
         gz,
         ax,
         ay,
-        az
-    );
+        az);
 
-    float roll  = filter.getRoll();
+    float roll = filter.getRoll();
     float pitch = filter.getPitch();
-    float yaw   = filter.getYaw();
+    float yaw = filter.getYaw();
 
     outData[0] = int(roll * 100.0f);
     outData[1] = int(pitch * 100.0f);
@@ -206,96 +219,119 @@ bool sampleIMU(int16_t* outData) {
     outData[4] = int(filter.q1 * 10000.0f);
     outData[5] = int(filter.q2 * 10000.0f);
     outData[6] = int(filter.q3 * 10000.0f);
-    outData[9] = temp;
+    outData[7] = int(ax * 1000.0f);
+    outData[8] = int(ay * 1000.0f);
+    outData[9] = int(az * 1000.0f);
+    outData[10] = int(gx * 1000.0f);
+    outData[11] = int(gy * 1000.0f);
+    outData[12] = int(gz * 1000.0f);
 
     // Monitor the actual sample rate once per second
-    // static uint32_t samples = 0;
-    // static uint32_t lastPrint = millis();
+    static uint32_t samples = 0;
+    static uint32_t lastPrint = millis();
 
-    // samples++;
+    samples++;
 
-    // uint32_t now = millis();
-    // if (now - lastPrint >= 1000)
-    // {
-    //     Serial.printf("Actual IMU rate: %lu Hz\n", samples);
-    //     samples = 0;
-    //     lastPrint = now;
-    // }
+    uint32_t now = millis();
+    if (now - lastPrint >= 1000)
+    {
+        Serial.printf("Actual IMU rate: %lu Hz\n", samples);
+        samples = 0;
+        lastPrint = now;
 
-    Serial.printf(
-        "Roll: %.2f Pitch: %.2f Yaw: %.2f\n",
-        roll,
-        pitch,
-        yaw
-    );
+        Serial.printf(
+            "Roll: %.2f Pitch: %.2f Yaw: %.2f\n",
+            roll,
+            pitch,
+            yaw);
 
-    Serial.printf(
-        "q0: %.2f q1: %.2f q2: %.2f q3: %.2f\n",
-        filter.q0,
-        filter.q1,
-        filter.q2,
-        filter.q3
-    );
+        Serial.printf(
+            "q0: %.2f q1: %.2f q2: %.2f q3: %.2f\n",
+            filter.q0,
+            filter.q1,
+            filter.q2,
+            filter.q3);
+    }
+
+    // Serial.printf(
+    //     "Roll: %.2f Pitch: %.2f Yaw: %.2f\n",
+    //     roll,
+    //     pitch,
+    //     yaw
+    // );
+
+    // Serial.printf(
+    //     "q0: %.2f q1: %.2f q2: %.2f q3: %.2f\n",
+    //     filter.q0,
+    //     filter.q1,
+    //     filter.q2,
+    //     filter.q3
+    // );
 
     return true;
 }
 
 // Send BLE value
-void sendBLEPacket(int16_t* data, size_t count) {
-    if (deviceConnected && pCharacteristic != nullptr) {
-        pCharacteristic->setValue((uint8_t*)data, count * sizeof(int16_t));
+void sendBLEPacket(int16_t *data, size_t count)
+{
+    if (deviceConnected && pCharacteristic != nullptr)
+    {
+        pCharacteristic->setValue((uint8_t *)data, count * sizeof(int16_t));
         pCharacteristic->notify();
     }
 }
 
-void setup() {
+void setup()
+{
     Serial.begin(115200);
     Serial.println("🔌 Starting...");
 
-    Wire.begin(21, 22);  // SDA, SCL
+    Wire.begin(21, 22);    // SDA, SCL
     Wire.setClock(400000); // ICM-20948 DMP works best with fast I2C
 
     Serial.println("🕒 Initializing IMU...");
 
     // Initialize the ICM hardware
     bool initialized = false;
-    while (!initialized) {
+    while (!initialized)
+    {
         // 0x69 is the default address for SparkFun. Use 0x68 if AD0 pin is low.
-        myIMU.begin(Wire, 0); 
-        if (myIMU.status != ICM_20948_Stat_Ok) {
+        myIMU.begin(Wire, 0);
+        if (myIMU.status != ICM_20948_Stat_Ok)
+        {
             Serial.println("❌ Failed to start ICM-20948 hardware. Retrying...");
             delay(500);
-        } else {
+        }
+        else
+        {
             initialized = true;
         }
     }
 
     ICM_20948_fss_t gyroFSS;
     gyroFSS.a = 0; // unused
-    gyroFSS.g = ICM_20948_GYRO_CONFIG_1_FS_SEL_e::dps1000;
+    gyroFSS.g = ICM_20948_GYRO_CONFIG_1_FS_SEL_e::dps2000;
 
     ICM_20948_fss_t accelFSS;
     accelFSS.a = ICM_20948_ACCEL_CONFIG_FS_SEL_e::gpm4;
     accelFSS.g = 0; // unused
 
     // Configure gyro ranges
-    if (myIMU.setFullScale(ICM_20948_Internal_Gyr, gyroFSS) 
-            != ICM_20948_Stat_Ok)
+    if (myIMU.setFullScale(ICM_20948_Internal_Gyr, gyroFSS) != ICM_20948_Stat_Ok)
     {
         Serial.println("❌ Failed to set gyro full scale");
     }
 
     // Configure accel ranges
-    if (myIMU.setFullScale(ICM_20948_Internal_Acc, accelFSS) 
-            != ICM_20948_Stat_Ok)
+    if (myIMU.setFullScale(ICM_20948_Internal_Acc, accelFSS) != ICM_20948_Stat_Ok)
     {
         Serial.println("❌ Failed to set accel full scale");
     }
 
     ICM_20948_smplrt_t sampleRate;
 
-    sampleRate.a = 4;   // 225 Hz accel
-    sampleRate.g = 4;   // 220 Hz gyro
+    sampleRate.a = 4; // 225 Hz accel
+    sampleRate.g = 4; // 220 Hz gyro
 
     if (myIMU.setSampleRate(ICM_20948_Internal_Acc, sampleRate) != ICM_20948_Stat_Ok)
     {
@@ -310,8 +346,8 @@ void setup() {
     // Digital low pass filter configuration
     ICM_20948_dlpcfg_t dlpf;
 
-    dlpf.g = gyr_d119bw5_n154bw3;   // Example
-    dlpf.a = acc_d111bw4_n136bw;   // Example
+    dlpf.g = gyr_d119bw5_n154bw3; // Example
+    dlpf.a = acc_d111bw4_n136bw;  // Example
 
     myIMU.enableDLPF(ICM_20948_Internal_Gyr, true);
     myIMU.enableDLPF(ICM_20948_Internal_Acc, true);
@@ -329,8 +365,8 @@ void setup() {
     Serial.println("✅ Accelerometer calibration complete");
 
     // Madgwick filter setup
-    filter.begin(FILTER_RATE);      // 228Hz update rate
-    filter.beta = 0.4f;             // larger beta = more responsive, smaller beta = more stable
+    filter.begin(FILTER_RATE); // 228Hz update rate
+    filter.beta = 0.3f;        // larger beta = more responsive, smaller beta = more stable
 
     // BLE setup
     BLEDevice::init("ESP32_SkateIMU");
@@ -341,8 +377,7 @@ void setup() {
     pCharacteristic = pService->createCharacteristic(
         CHARACTERISTIC_UUID,
         BLECharacteristic::PROPERTY_READ |
-        BLECharacteristic::PROPERTY_NOTIFY
-    );
+            BLECharacteristic::PROPERTY_NOTIFY);
 
     pCharacteristic->addDescriptor(new BLE2902());
     pService->start();
@@ -351,14 +386,17 @@ void setup() {
     Serial.println("📡 BLE Advertising started");
 }
 
-void loop() {
-    static int16_t imuData[10]; // Create an array of 10 items, initialized to zero
+void loop()
+{
+    static int16_t imuData[13]; // Create an array of 13 items, initialized to zero
 
     // Keep pulling data to prevent the sensor's FIFO buffer from overflowing
-    if (sampleIMU(imuData)) {
+    if (sampleIMU(imuData))
+    {
         // Only transmit over BLE at your designated transmission rate (100ms)
-        if (millis() - lastSendTime >= sendInterval) {
-            sendBLEPacket(imuData, 10);
+        if (millis() - lastSendTime >= sendInterval)
+        {
+            sendBLEPacket(imuData, 13);
             lastSendTime = millis();
         }
     }
