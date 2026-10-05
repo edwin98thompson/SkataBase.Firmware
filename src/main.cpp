@@ -7,6 +7,10 @@
 #include <ICM_20948.h>
 #include <MadgwickAHRS.h> // Include the Madgwick Filter Library
 
+// I2C pins
+#define SDA_PIN 22
+#define SCL_PIN 23
+
 // BLE UUIDs
 #define SERVICE_UUID "12345678-1234-1234-1234-1234567890ab"
 #define CHARACTERISTIC_UUID "abcd1234-ab12-cd34-ef56-abcdef123456"
@@ -111,7 +115,8 @@ void getGyroBias()
             sumY += myIMU.agmt.gyr.axes.y;
             sumZ += myIMU.agmt.gyr.axes.z;
         }
-        delay(1); // Small delay to allow sensor to update
+        // TODO - Add a check to ensure the sensor is stable before taking readings
+        delay(5); // Small delay to allow sensor to update
     }
 
     gyroBiasX = sumX / gyroCalSamples;
@@ -143,7 +148,8 @@ void getAccelBias()
             sumY += myIMU.agmt.acc.axes.y;
             sumZ += myIMU.agmt.acc.axes.z;
         }
-        delay(1); // Small delay to allow sensor to update
+        // TODO - Add a check to ensure the sensor is stable before taking readings
+        delay(5); // Small delay to allow sensor to update
     }
 
     accelBiasX = sumX / accelCalSamples;
@@ -286,7 +292,7 @@ void setup()
     Serial.begin(115200);
     Serial.println("🔌 Starting...");
 
-    Wire.begin(21, 22);    // SDA, SCL
+    Wire.begin(SDA_PIN, SCL_PIN);    // SDA, SCL
     Wire.setClock(400000); // ICM-20948 DMP works best with fast I2C
 
     Serial.println("🕒 Initializing IMU...");
@@ -296,7 +302,7 @@ void setup()
     while (!initialized)
     {
         // 0x69 is the default address for SparkFun. Use 0x68 if AD0 pin is low.
-        myIMU.begin(Wire, 0);
+        myIMU.begin(Wire, false);
         if (myIMU.status != ICM_20948_Stat_Ok)
         {
             Serial.println("❌ Failed to start ICM-20948 hardware. Retrying...");
@@ -379,7 +385,6 @@ void setup()
         BLECharacteristic::PROPERTY_READ |
             BLECharacteristic::PROPERTY_NOTIFY);
 
-    pCharacteristic->addDescriptor(new BLE2902());
     pService->start();
     pServer->getAdvertising()->start();
 

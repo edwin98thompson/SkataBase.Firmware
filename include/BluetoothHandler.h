@@ -8,9 +8,9 @@
 
 class BluetoothHandler {
 public:
-    BluetoothHandler(const std::string& deviceName);
+    BluetoothHandler(const String& deviceName);
     void begin();
-    void updateValue(const std::string& value);
+    void updateValue(const String& value);
     bool isConnected() const;
 
 private:

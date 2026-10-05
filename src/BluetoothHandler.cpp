@@ -4,7 +4,7 @@
 #define SERVICE_UUID        "12345678-1234-1234-1234-1234567890ab"
 #define CHARACTERISTIC_UUID "abcd1234-ab12-cd34-ef56-abcdef123456"
 
-BluetoothHandler::BluetoothHandler(const std::string& deviceName)
+BluetoothHandler::BluetoothHandler(const String& deviceName)
 : pServer(nullptr), pService(nullptr), pCharacteristic(nullptr), deviceConnected(false) {
     BLEDevice::init(deviceName);
 }
@@ -18,17 +18,17 @@ void BluetoothHandler::begin() {
     pCharacteristic = pService->createCharacteristic(
         CHARACTERISTIC_UUID,
         BLECharacteristic::PROPERTY_READ |
+        BLECharacteristic::PROPERTY_NOTIFY |
         BLECharacteristic::PROPERTY_WRITE
     );
 
     pCharacteristic->setValue("Hello Android");
-    pCharacteristic->addDescriptor(new BLE2902());
 
     pService->start();
     pServer->getAdvertising()->start();
 }
 
-void BluetoothHandler::updateValue(const std::string& value) {
+void BluetoothHandler::updateValue(const String& value) {
     if (deviceConnected) {
         pCharacteristic->setValue(value);
         pCharacteristic->notify();  // If notify is needed
