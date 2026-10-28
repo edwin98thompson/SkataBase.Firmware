@@ -5,6 +5,7 @@
 #include "ImuPacket.h"
 #include "ImuPacketEncoder.h"
 #include "BluetoothHandler.h"
+#include "ImuManager.h"
 
 // I2C pins
 #define SDA_PIN 22
@@ -17,6 +18,8 @@ Madgwick filter;
 uint16_t sequence = 0;
 
 BluetoothHandler bleHandler("ESP32_SkateIMU");
+
+ImuManager imuManager;
 
 // Timing Variables
 unsigned long lastSendTime = 0;
@@ -259,83 +262,16 @@ void setup()
     Serial.begin(115200);
     Serial.println("🔌 Starting...");
 
-    Wire.begin(SDA_PIN, SCL_PIN);    // SDA, SCL
-    Wire.setClock(400000); // ICM-20948 DMP works best with fast I2C
-
-    Serial.println("🕒 Initializing IMU...");
-
-    // Initialize the ICM hardware
-    bool initialized = false;
-    while (!initialized)
+    if (!imuManager.begin())
     {
-        // 0x69 is the default address for SparkFun. Use 0x68 if AD0 pin is low.
-        myIMU.begin(Wire, false);
-        if (myIMU.status != ICM_20948_Stat_Ok)
+        Serial.println("IMU initialisation failed.");
+        while (true)
         {
-            Serial.println("❌ Failed to start ICM-20948 hardware. Retrying...");
-            delay(500);
-        }
-        else
-        {
-            initialized = true;
+            delay(1000);
         }
     }
 
-    ICM_20948_fss_t gyroFSS;
-    gyroFSS.a = 0; // unused
-    gyroFSS.g = ICM_20948_GYRO_CONFIG_1_FS_SEL_e::dps2000;
-
-    ICM_20948_fss_t accelFSS;
-    accelFSS.a = ICM_20948_ACCEL_CONFIG_FS_SEL_e::gpm4;
-    accelFSS.g = 0; // unused
-
-    // Configure gyro ranges
-    if (myIMU.setFullScale(ICM_20948_Internal_Gyr, gyroFSS) != ICM_20948_Stat_Ok)
-    {
-        Serial.println("❌ Failed to set gyro full scale");
-    }
-
-    // Configure accel ranges
-    if (myIMU.setFullScale(ICM_20948_Internal_Acc, accelFSS) != ICM_20948_Stat_Ok)
-    {
-        Serial.println("❌ Failed to set accel full scale");
-    }
-
-    ICM_20948_smplrt_t sampleRate;
-
-    sampleRate.a = 4; // 225 Hz accel
-    sampleRate.g = 4; // 220 Hz gyro
-
-    if (myIMU.setSampleRate(ICM_20948_Internal_Acc, sampleRate) != ICM_20948_Stat_Ok)
-    {
-        Serial.println("Failed to set accelerometer sample rate");
-    }
-
-    if (myIMU.setSampleRate(ICM_20948_Internal_Gyr, sampleRate) != ICM_20948_Stat_Ok)
-    {
-        Serial.println("Failed to set gyroscope sample rate");
-    }
-
-    // Digital low pass filter configuration
-    ICM_20948_dlpcfg_t dlpf;
-
-    dlpf.g = gyr_d119bw5_n154bw3; // Example
-    dlpf.a = acc_d111bw4_n136bw;  // Example
-
-    myIMU.enableDLPF(ICM_20948_Internal_Gyr, true);
-    myIMU.enableDLPF(ICM_20948_Internal_Acc, true);
-
-    myIMU.setDLPFcfg(ICM_20948_Internal_Gyr, dlpf);
-    myIMU.setDLPFcfg(ICM_20948_Internal_Acc, dlpf);
-
-    myIMU.startupMagnetometer();
-
-    Serial.println("✅ ICM-20948 configured");
-
-    getGyroBias();
-    Serial.println("✅ Gyroscope calibration complete");
-    getAccelBias();
-    Serial.println("✅ Accelerometer calibration complete");
+    // Implement calibration class and apply
 
     // Madgwick filter setup
     filter.begin(FILTER_RATE); // 228Hz update rate
@@ -353,8 +289,12 @@ void loop()
     ImuPacket packet;
     uint8_t buffer[IMU_PACKET_SIZE];
 
-    if (sampleIMU(packet))
+    if (imuManager.readSample(packet))
     {
+        // Apply madgwick filter to the packet to compute orientation
+        // refer to sampleIMU() for how to use the filter
+
+
         if (millis() - lastSendTime >= sendInterval)
         {
             packet.sequence = sequence++;
