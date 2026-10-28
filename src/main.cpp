@@ -6,6 +6,8 @@
 #include <Wire.h>
 #include <ICM_20948.h>
 #include <MadgwickAHRS.h> // Include the Madgwick Filter Library
+#include "ImuPacket.h"
+#include "ImuPacketEncoder.h"
 
 // I2C pins
 #define SDA_PIN 22
@@ -20,6 +22,7 @@ ICM_20948_I2C myIMU;
 Madgwick filter;
 BLECharacteristic *pCharacteristic;
 bool deviceConnected = false;
+uint16_t sequence = 0;
 
 // Timing Variables
 unsigned long lastSendTime = 0;
@@ -69,7 +72,7 @@ float accelBiasZ = 0.0;
 
 int accelCalSamples = 1000;
 
-// BLE callbacks
+/// @brief BLE Server Callbacks to handle connection and disconnection events
 class MyServerCallbacks : public BLEServerCallbacks
 {
     void onConnect(BLEServer *pServer) override
@@ -86,18 +89,8 @@ class MyServerCallbacks : public BLEServerCallbacks
     }
 };
 
-// Utility: clamp and scale float to int16_t
-float clamp(float val, float minVal, float maxVal)
-{
-    return (val < minVal) ? minVal : (val > maxVal ? maxVal : val);
-}
 
-int16_t scaleFloatToInt16(float val, float minVal, float maxVal)
-{
-    val = clamp(val, minVal, maxVal);
-    return (int16_t)((((val - minVal) / (maxVal - minVal)) * 65535.0f) - 32768.0f);
-}
-
+/// @brief Calibrates the gyroscope by averaging a number of samples
 void getGyroBias()
 {
     float sumX = 0.0f;
@@ -131,6 +124,7 @@ void getGyroBias()
     Serial.println(gyroBiasZ);
 }
 
+/// @brief Calibrates the accelerometer by averaging a number of samples
 void getAccelBias()
 {
     float sumX = 0.0f;
@@ -164,8 +158,10 @@ void getAccelBias()
     Serial.println(accelBiasZ);
 }
 
-// IMU sampling and on-board fusion processing
-bool sampleIMU(int16_t *outData)
+/// @brief Samples IMU data and populates the provided packet
+/// @param packet Reference to the IMuPacket to populate
+/// @return true if data was successfully sampled, false otherwise
+bool sampleIMU(ImuPacket& packet)
 {
 
     if (!myIMU.dataReady())
@@ -218,19 +214,23 @@ bool sampleIMU(int16_t *outData)
     float pitch = filter.getPitch();
     float yaw = filter.getYaw();
 
-    outData[0] = int(roll * 100.0f);
-    outData[1] = int(pitch * 100.0f);
-    outData[2] = int(yaw * 100.0f);
-    outData[3] = int(filter.q0 * 10000.0f);
-    outData[4] = int(filter.q1 * 10000.0f);
-    outData[5] = int(filter.q2 * 10000.0f);
-    outData[6] = int(filter.q3 * 10000.0f);
-    outData[7] = int(ax * 1000.0f);
-    outData[8] = int(ay * 1000.0f);
-    outData[9] = int(az * 1000.0f);
-    outData[10] = int(gx * 1000.0f);
-    outData[11] = int(gy * 1000.0f);
-    outData[12] = int(gz * 1000.0f);
+    packet.roll = roll;
+    packet.pitch = pitch;
+    packet.yaw = yaw;
+    packet.accelX = ax;
+    packet.accelY = ay;
+    packet.accelZ = az;
+    packet.gyroX = gx;
+    packet.gyroY = gy;
+    packet.gyroZ = gz;
+    packet.magX = mx;
+    packet.magY = my;
+    packet.magZ = mz;
+    packet.q0 = filter.q0;
+    packet.q1 = filter.q1;
+    packet.q2 = filter.q2;
+    packet.q3 = filter.q3;
+    packet.temperatureC = temp;
 
     // Monitor the actual sample rate once per second
     static uint32_t samples = 0;
@@ -277,16 +277,19 @@ bool sampleIMU(int16_t *outData)
     return true;
 }
 
-// Send BLE value
-void sendBLEPacket(int16_t *data, size_t count)
+/// @brief Sends a BLE packet to the connected client if available
+/// @param data Pointer to the data buffer to send
+/// @param count Number of bytes to send from the data buffer
+void sendBLEPacket(const uint8_t* data, size_t count)
 {
     if (deviceConnected && pCharacteristic != nullptr)
     {
-        pCharacteristic->setValue((uint8_t *)data, count * sizeof(int16_t));
+        pCharacteristic->setValue((uint8_t *)data, count);
         pCharacteristic->notify();
     }
 }
 
+/// @brief Arduino setup function to initialize Serial, I2C, IMU, and BLE
 void setup()
 {
     Serial.begin(115200);
@@ -391,18 +394,27 @@ void setup()
     Serial.println("📡 BLE Advertising started");
 }
 
+/// @brief Main loop for sampling IMU data and sending it over BLE
 void loop()
 {
-    static int16_t imuData[13]; // Create an array of 13 items, initialized to zero
+    static uint16_t sequence = 0;
 
-    // Keep pulling data to prevent the sensor's FIFO buffer from overflowing
-    if (sampleIMU(imuData))
+    ImuPacket packet;
+    uint8_t buffer[IMU_PACKET_SIZE];
+
+    if (sampleIMU(packet))
     {
-        // Only transmit over BLE at your designated transmission rate (100ms)
         if (millis() - lastSendTime >= sendInterval)
         {
-            sendBLEPacket(imuData, 13);
-            lastSendTime = millis();
+            packet.sequence = sequence++;
+            packet.timestampMs = millis();
+
+            if (encodeImuPacket(packet, buffer, sizeof(buffer)))
+            {
+                sendBLEPacket(buffer, sizeof(buffer));
+
+                lastSendTime = millis();
+            }
         }
     }
 }
