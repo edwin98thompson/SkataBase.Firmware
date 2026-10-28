@@ -137,124 +137,6 @@ void getAccelBias()
     Serial.println(accelBiasZ);
 }
 
-/// @brief Samples IMU data and populates the provided packet
-/// @param packet Reference to the IMuPacket to populate
-/// @return true if data was successfully sampled, false otherwise
-bool sampleIMU(ImuPacket& packet)
-{
-
-    if (!myIMU.dataReady())
-    {
-        return false;
-    }
-
-    myIMU.getAGMT(); // Read raw physical registers
-
-    // calculate acc to 3 dp
-    const float ax = (myIMU.agmt.acc.axes.x - accelBiasX) / 8192.0f;
-    const float ay = (myIMU.agmt.acc.axes.y - accelBiasY) / 8192.0f;
-    const float az = (myIMU.agmt.acc.axes.z - accelBiasZ) / 8192.0f;
-
-    // // Gyro: Convert raw to Degrees Per Second (Default scale is 131 LSB/dps)
-    float gx = (myIMU.agmt.gyr.axes.x - gyroBiasX) / 16.4f;
-    float gy = (myIMU.agmt.gyr.axes.y - gyroBiasY) / 16.4f;
-    float gz = (myIMU.agmt.gyr.axes.z - gyroBiasZ) / 16.4f;
-
-    // // Magnetometer: Raw microteslas (µT) work fine directly
-    float mx = myIMU.agmt.mag.axes.x;
-    float my = myIMU.agmt.mag.axes.y;
-    float mz = myIMU.agmt.mag.axes.z;
-
-    float temp = myIMU.agmt.tmp.val / 333.87f + 21.0f; // Convert raw temp to Celsius
-
-    // print data
-    // Serial.print(ax, 3); Serial.print(", ");
-    // Serial.print(ay, 3); Serial.print(", ");
-    // Serial.print(az, 3); Serial.print(", ");
-
-    // Serial.print(gx, 3); Serial.print(", ");
-    // Serial.print(gy, 3); Serial.print(", ");
-    // Serial.print(gz, 3); Serial.print(", ");
-
-    // Serial.print(mx, 3); Serial.print(", ");
-    // Serial.print(my, 3); Serial.print(", ");
-    // Serial.print(mz, 3); Serial.print(", ");
-    // Serial.println();
-
-    filter.updateIMU(
-        gx,
-        gy,
-        gz,
-        ax,
-        ay,
-        az);
-
-    float roll = filter.getRoll();
-    float pitch = filter.getPitch();
-    float yaw = filter.getYaw();
-
-    packet.roll = roll;
-    packet.pitch = pitch;
-    packet.yaw = yaw;
-    packet.accelX = ax;
-    packet.accelY = ay;
-    packet.accelZ = az;
-    packet.gyroX = gx;
-    packet.gyroY = gy;
-    packet.gyroZ = gz;
-    packet.magX = mx;
-    packet.magY = my;
-    packet.magZ = mz;
-    packet.q0 = filter.q0;
-    packet.q1 = filter.q1;
-    packet.q2 = filter.q2;
-    packet.q3 = filter.q3;
-    packet.temperatureC = temp;
-
-    // Monitor the actual sample rate once per second
-    static uint32_t samples = 0;
-    static uint32_t lastPrint = millis();
-
-    samples++;
-
-    uint32_t now = millis();
-    if (now - lastPrint >= 1000)
-    {
-        Serial.printf("Actual IMU rate: %lu Hz\n", samples);
-        samples = 0;
-        lastPrint = now;
-
-        Serial.printf(
-            "Roll: %.2f Pitch: %.2f Yaw: %.2f\n",
-            roll,
-            pitch,
-            yaw);
-
-        Serial.printf(
-            "q0: %.2f q1: %.2f q2: %.2f q3: %.2f\n",
-            filter.q0,
-            filter.q1,
-            filter.q2,
-            filter.q3);
-    }
-
-    // Serial.printf(
-    //     "Roll: %.2f Pitch: %.2f Yaw: %.2f\n",
-    //     roll,
-    //     pitch,
-    //     yaw
-    // );
-
-    // Serial.printf(
-    //     "q0: %.2f q1: %.2f q2: %.2f q3: %.2f\n",
-    //     filter.q0,
-    //     filter.q1,
-    //     filter.q2,
-    //     filter.q3
-    // );
-
-    return true;
-}
 
 /// @brief Arduino setup function to initialize Serial, I2C, IMU, and BLE
 void setup()
@@ -292,8 +174,22 @@ void loop()
     if (imuManager.readSample(packet))
     {
         // Apply madgwick filter to the packet to compute orientation
-        // refer to sampleIMU() for how to use the filter
+        // todo - filter class needed
+        filter.updateIMU(
+        packet.gyroX,
+        packet.gyroY,
+        packet.gyroZ,
+        packet.accelX,
+        packet.accelY,
+        packet.accelZ);
 
+        packet.roll = filter.getRoll();
+        packet.pitch = filter.getPitch();
+        packet.yaw = filter.getYaw();
+        packet.q0 = filter.q0;
+        packet.q1 = filter.q1;
+        packet.q2 = filter.q2;
+        packet.q3 = filter.q3;
 
         if (millis() - lastSendTime >= sendInterval)
         {
