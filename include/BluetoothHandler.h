@@ -1,27 +1,38 @@
-#ifndef BLUETOOTH_HANDLER_H
-#define BLUETOOTH_HANDLER_H
+#pragma once
 
+#include <Arduino.h>
 #include <BLEDevice.h>
 #include <BLEServer.h>
-#include <BLEUtils.h>
-#include <BLE2902.h>
+#include <BLECharacteristic.h>
 
-class BluetoothHandler {
+#include <stddef.h>
+#include <stdint.h>
+
+class BluetoothHandler
+{
 public:
-    BluetoothHandler(const String& deviceName);
+    explicit BluetoothHandler(const String& deviceName);
+
     void begin();
-    void updateValue(const String& value);
+
+    // Send binary data over BLE notifications.
+    void sendPacket(const uint8_t* data, size_t length);
+
     bool isConnected() const;
 
 private:
     BLEServer* pServer;
     BLEService* pService;
     BLECharacteristic* pCharacteristic;
+    String deviceName;
+    bool initialized;
     bool deviceConnected;
 
-    class ServerCallbacks : public BLEServerCallbacks {
+    class ServerCallbacks : public BLEServerCallbacks
+    {
     public:
-        ServerCallbacks(BluetoothHandler* parent);
+        explicit ServerCallbacks(BluetoothHandler* parent);
+
         void onConnect(BLEServer* pServer) override;
         void onDisconnect(BLEServer* pServer) override;
 
@@ -29,5 +40,3 @@ private:
         BluetoothHandler* parent;
     };
 };
-
-#endif

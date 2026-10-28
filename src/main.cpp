@@ -1,28 +1,22 @@
 #include <Arduino.h>
-#include <BLEDevice.h>
-#include <BLEServer.h>
-#include <BLEUtils.h>
-#include <BLE2902.h>
 #include <Wire.h>
 #include <ICM_20948.h>
 #include <MadgwickAHRS.h> // Include the Madgwick Filter Library
 #include "ImuPacket.h"
 #include "ImuPacketEncoder.h"
+#include "BluetoothHandler.h"
 
 // I2C pins
 #define SDA_PIN 22
 #define SCL_PIN 23
 
-// BLE UUIDs
-#define SERVICE_UUID "12345678-1234-1234-1234-1234567890ab"
-#define CHARACTERISTIC_UUID "abcd1234-ab12-cd34-ef56-abcdef123456"
-
 // BLE + IMU
 ICM_20948_I2C myIMU;
 Madgwick filter;
-BLECharacteristic *pCharacteristic;
-bool deviceConnected = false;
+
 uint16_t sequence = 0;
+
+BluetoothHandler bleHandler("ESP32_SkateIMU");
 
 // Timing Variables
 unsigned long lastSendTime = 0;
@@ -71,24 +65,6 @@ float accelBiasY = 0.0;
 float accelBiasZ = 0.0;
 
 int accelCalSamples = 1000;
-
-/// @brief BLE Server Callbacks to handle connection and disconnection events
-class MyServerCallbacks : public BLEServerCallbacks
-{
-    void onConnect(BLEServer *pServer) override
-    {
-        deviceConnected = true;
-        Serial.println("✅ BLE Client connected");
-    }
-
-    void onDisconnect(BLEServer *pServer) override
-    {
-        deviceConnected = false;
-        Serial.println("❌ BLE Client disconnected");
-        pServer->startAdvertising();
-    }
-};
-
 
 /// @brief Calibrates the gyroscope by averaging a number of samples
 void getGyroBias()
@@ -277,18 +253,6 @@ bool sampleIMU(ImuPacket& packet)
     return true;
 }
 
-/// @brief Sends a BLE packet to the connected client if available
-/// @param data Pointer to the data buffer to send
-/// @param count Number of bytes to send from the data buffer
-void sendBLEPacket(const uint8_t* data, size_t count)
-{
-    if (deviceConnected && pCharacteristic != nullptr)
-    {
-        pCharacteristic->setValue((uint8_t *)data, count);
-        pCharacteristic->notify();
-    }
-}
-
 /// @brief Arduino setup function to initialize Serial, I2C, IMU, and BLE
 void setup()
 {
@@ -378,20 +342,7 @@ void setup()
     filter.beta = 0.08f;        // larger beta = more responsive, smaller beta = more stable
 
     // BLE setup
-    BLEDevice::init("ESP32_SkateIMU");
-    BLEServer *pServer = BLEDevice::createServer();
-    pServer->setCallbacks(new MyServerCallbacks());
-
-    BLEService *pService = pServer->createService(SERVICE_UUID);
-    pCharacteristic = pService->createCharacteristic(
-        CHARACTERISTIC_UUID,
-        BLECharacteristic::PROPERTY_READ |
-            BLECharacteristic::PROPERTY_NOTIFY);
-
-    pService->start();
-    pServer->getAdvertising()->start();
-
-    Serial.println("📡 BLE Advertising started");
+    bleHandler.begin();
 }
 
 /// @brief Main loop for sampling IMU data and sending it over BLE
@@ -411,7 +362,7 @@ void loop()
 
             if (encodeImuPacket(packet, buffer, sizeof(buffer)))
             {
-                sendBLEPacket(buffer, sizeof(buffer));
+                bleHandler.sendPacket(buffer, sizeof(buffer));
 
                 lastSendTime = millis();
             }
