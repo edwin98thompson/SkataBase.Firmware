@@ -372,7 +372,7 @@ void setup()
 
     // Madgwick filter setup
     filter.begin(FILTER_RATE); // 228Hz update rate
-    filter.beta = 0.3f;        // larger beta = more responsive, smaller beta = more stable
+    filter.beta = 0.08f;        // larger beta = more responsive, smaller beta = more stable
 
     // BLE setup
     BLEDevice::init("ESP32_SkateIMU");
