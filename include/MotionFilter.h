@@ -6,7 +6,9 @@ class MotionFilter
 public: 
     explicit MotionFilter(float filterRate, float beta);
 
-    void computeOrientation(ImuPacket& packet);
+    void computeOrientation(
+        ImuPacket& packet,
+        bool magnetometerCalibrated);
 
 
 private:
