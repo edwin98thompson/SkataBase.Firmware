@@ -6,9 +6,17 @@
 
 bool CalibrationHandler::begin()
 {
-    // Attempt to open the preferences namespace for reading calibration data.
+    // Read/write mode creates the namespace on first boot.
     if (!preferences.begin("imu-cal", false))
     {
+        return false;
+    }
+
+    // Persist the default state so a fresh device has an initialized namespace.
+    if (!preferences.isKey("mag-valid")
+        && preferences.putBool("mag-valid", false) != 1)
+    {
+        preferences.end();
         return false;
     }
 
