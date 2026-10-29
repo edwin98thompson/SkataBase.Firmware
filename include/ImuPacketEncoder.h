@@ -4,7 +4,8 @@
 #include <stddef.h>
 #include "ImuPacket.h"
 
-constexpr size_t IMU_PACKET_SIZE = 76;
+// Now that we have added calibrationStatus to ImuPacket, the size of the packet is 77 bytes.
+constexpr size_t IMU_PACKET_SIZE = 77;
 
 bool encodeImuPacket(
     const ImuPacket& packet,
