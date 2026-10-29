@@ -73,6 +73,8 @@ void loop()
         }
     }
 
+    // If the magnetometer calibration is in progress, update it with a null sample,
+    // this allows the method to check for timeout and update the calibration status accordingly.
     calibrationHandler.updateMagnetometerCalibration(nullptr);
 
     ImuPacket packet;
