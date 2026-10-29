@@ -1,5 +1,4 @@
 #include <Arduino.h>
-#include <MadgwickAHRS.h>
 #include "ImuPacket.h"
 #include "ImuPacketEncoder.h"
 #include "BluetoothHandler.h"
