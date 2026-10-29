@@ -1,25 +1,22 @@
 #include <Arduino.h>
-#include <Wire.h>
-#include <ICM_20948.h>
-#include <MadgwickAHRS.h> // Include the Madgwick Filter Library
+#include <MadgwickAHRS.h>
 #include "ImuPacket.h"
 #include "ImuPacketEncoder.h"
 #include "BluetoothHandler.h"
 #include "ImuManager.h"
-
-// I2C pins
-#define SDA_PIN 22
-#define SCL_PIN 23
-
-// BLE + IMU
-ICM_20948_I2C myIMU;
-Madgwick filter;
+#include "MotionFilter.h"
 
 uint16_t sequence = 0;
 
-BluetoothHandler bleHandler("ESP32_SkateIMU");
+const char* DEVICE_NAME = "ESP32_SkateIMU";
+BluetoothHandler bleHandler;
 
 ImuManager imuManager;
+
+const float FILTER_RATE = 228.0f; // 228Hz update rate
+const float BETA = 0.08f;        // larger beta = more responsive, smaller beta = more stable
+
+MotionFilter motionFilter;
 
 // Timing Variables
 unsigned long lastSendTime = 0;
@@ -27,6 +24,8 @@ const unsigned long sendInterval = 20; // 50Hz transmission rate
 constexpr float FILTER_RATE = 228.0f;
 
 // Calibration Structures
+
+/*
 
 struct AccelCalibration
 {
@@ -137,8 +136,9 @@ void getAccelBias()
     Serial.println(accelBiasZ);
 }
 
+*/
 
-/// @brief Arduino setup function to initialize Serial, I2C, IMU, and BLE
+/// @brief Arduino setup function to initialize the IMU, motion filter, and BLE
 void setup()
 {
     Serial.begin(115200);
@@ -153,13 +153,14 @@ void setup()
         }
     }
 
-    // Implement calibration class and apply
+    // Todo - Implement calibration routines for gyro and accel
+    // Todo figure out magnetometer calibration and implement it
 
-    // Madgwick filter setup
-    filter.begin(FILTER_RATE); // 228Hz update rate
-    filter.beta = 0.08f;        // larger beta = more responsive, smaller beta = more stable
+    // Implement motion filter
+    motionFilter = MotionFilter(FILTER_RATE, BETA);
 
     // BLE setup
+    bleHandler = BluetoothHandler(DEVICE_NAME);
     bleHandler.begin();
 }
 
@@ -174,22 +175,7 @@ void loop()
     if (imuManager.readSample(packet))
     {
         // Apply madgwick filter to the packet to compute orientation
-        // todo - filter class needed
-        filter.updateIMU(
-        packet.gyroX,
-        packet.gyroY,
-        packet.gyroZ,
-        packet.accelX,
-        packet.accelY,
-        packet.accelZ);
-
-        packet.roll = filter.getRoll();
-        packet.pitch = filter.getPitch();
-        packet.yaw = filter.getYaw();
-        packet.q0 = filter.q0;
-        packet.q1 = filter.q1;
-        packet.q2 = filter.q2;
-        packet.q3 = filter.q3;
+        motionFilter.computeOrientation(packet);
 
         if (millis() - lastSendTime >= sendInterval)
         {
