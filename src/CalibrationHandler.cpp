@@ -7,7 +7,7 @@
 bool CalibrationHandler::begin()
 {
     // Attempt to open the preferences namespace for reading calibration data.
-    if (!preferences.begin("imu-cal", true))
+    if (!preferences.begin("imu-cal", false))
     {
         return false;
     }
@@ -282,6 +282,7 @@ bool CalibrationHandler::saveMagnetometerCalibration(
         return false;
     }
 
+    // Save the calibration data to non-volatile storage.
     bool saved = preferences.putBool("mag-valid", false) == 1
         && preferences.putFloat("mag-ox", offsetX) == sizeof(float)
         && preferences.putFloat("mag-oy", offsetY) == sizeof(float)
