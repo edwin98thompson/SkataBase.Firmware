@@ -1,5 +1,7 @@
 #include "BluetoothHandler.h"
 
+#include <string>
+
 namespace
 {
     constexpr char SERVICE_UUID[] =
@@ -7,6 +9,7 @@ namespace
 
     constexpr char CHARACTERISTIC_UUID[] =
         "abcd1234-ab12-cd34-ef56-abcdef123456";
+    constexpr char CALIBRATE_MAGNETOMETER_COMMAND[] = "CALIBRATE_MAG";
 }
 
 BluetoothHandler::BluetoothHandler(const String& deviceName)
@@ -14,6 +17,7 @@ BluetoothHandler::BluetoothHandler(const String& deviceName)
       pService(nullptr),
       pCharacteristic(nullptr),
       deviceConnected(false),
+      calibrationRequestPending(false),
       deviceName(deviceName),
       initialized(false)
 {
@@ -40,8 +44,11 @@ void BluetoothHandler::begin()
     pCharacteristic = pService->createCharacteristic(
         CHARACTERISTIC_UUID,
         BLECharacteristic::PROPERTY_READ |
-        BLECharacteristic::PROPERTY_NOTIFY
+        BLECharacteristic::PROPERTY_NOTIFY |
+        BLECharacteristic::PROPERTY_WRITE
     );
+    pCharacteristic->setCallbacks(
+        new CharacteristicCallbacks(this));
 
     pService->start();
 
@@ -71,6 +78,11 @@ bool BluetoothHandler::isConnected() const
     return deviceConnected;
 }
 
+bool BluetoothHandler::takeMagnetometerCalibrationRequest()
+{
+    return calibrationRequestPending.exchange(false);
+}
+
 // ----- Server callbacks -----
 
 BluetoothHandler::ServerCallbacks::ServerCallbacks(
@@ -96,4 +108,23 @@ void BluetoothHandler::ServerCallbacks::onDisconnect(
 
     // Allow the Android app to reconnect.
     pServer->startAdvertising();
+}
+
+BluetoothHandler::CharacteristicCallbacks::CharacteristicCallbacks(
+    BluetoothHandler* parent)
+    : parent(parent)
+{
+}
+
+/// @brief Handle write events to the BLE characteristic. If the received command is "CALIBRATE_MAG", the parent BluetoothHandler's calibrationRequestPending flag is set to true.
+/// @param characteristic The BLE characteristic that received the write event.
+void BluetoothHandler::CharacteristicCallbacks::onWrite(
+    BLECharacteristic* characteristic)
+{
+    const std::string command = characteristic->getValue();
+    // The Android app writes this UTF-8 command to the IMU characteristic.
+    if (command == CALIBRATE_MAGNETOMETER_COMMAND)
+    {
+        parent->calibrationRequestPending.store(true);
+    }
 }
