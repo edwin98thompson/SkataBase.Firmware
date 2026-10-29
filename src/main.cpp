@@ -44,11 +44,8 @@ void setup()
         Serial.println("Failed to load calibration data from NVS.");
     }
 
-    // Todo - Implement calibration routines for gyro and accel
-    // Todo figure out magnetometer calibration and implement it
     calibrationHandler.calibrateGyroscope(imuManager);
     calibrationHandler.calibrateAccelerometer(imuManager);
-    
 
     // Implement motion filter
     motionFilter = MotionFilter(FILTER_RATE, BETA);
@@ -103,7 +100,6 @@ void loop()
             if (encodeImuPacket(packet, buffer, sizeof(buffer)))
             {
                 bleHandler.sendPacket(buffer, sizeof(buffer));
-
                 lastSendTime = millis();
             }
         }

@@ -35,7 +35,7 @@ void BluetoothHandler::begin()
     }
 
     initialized = true;
-
+    
     pServer = BLEDevice::createServer();
     pServer->setCallbacks(new ServerCallbacks(this));
 
