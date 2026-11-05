@@ -330,8 +330,7 @@ void CalibrationHandler::apply(ImuPacket& packet) const
         packet.magY = (packet.magY - magOffsetY) * magScaleY;
         packet.magZ = (packet.magZ - magOffsetZ) * magScaleZ;
     }
-    packet.calibrationStatus =
-        static_cast<uint8_t>(calibrationStatus);
+    packet.calibrationStatus = static_cast<uint8_t>(calibrationStatus);
 }
 
 /// @brief Check if the magnetometer is calibrated.

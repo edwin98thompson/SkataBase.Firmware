@@ -19,48 +19,198 @@ namespace
     constexpr float GYRO_SCALE = 16.4f;
 }
 
+
 bool ImuManager::begin()
 {
-    Serial.println("Initialising IMU...");
+    Serial.begin(115200);
+    delay(1500);
 
-    // Initialise I2C.
-    Wire.begin(SDA_PIN, SCL_PIN);
-    Wire.setClock(I2C_CLOCK_HZ);
+    Serial.println("\n==================================");
+    Serial.println("     ICM-20948 I2C DIAGNOSTICS");
+    Serial.println("==================================");
 
-    // Initialise the ICM-20948.
-    // false selects the default I2C address, normally 0x69.
-    while (true)
+    Serial.printf("SDA GPIO: %d\n", SDA_PIN);
+    Serial.printf("SCL GPIO: %d\n", SCL_PIN);
+
+    // Initialise I2C once.
+    Serial.println("\n[1] Initialising I2C...");
+
+    if (!Wire.begin(SDA_PIN, SCL_PIN))
     {
-        imu.begin(Wire, false);
-
-        if (imu.status == ICM_20948_Stat_Ok)
-        {
-            break;
-        }
-
-        Serial.print("Failed to initialise ICM-20948: ");
-        Serial.println(imu.statusString());
-
-        Serial.println("Retrying in 500 ms...");
-        delay(500);
-    }
-
-    Serial.println("ICM-20948 detected.");
-
-    // Configure sensor ranges, sample rates, and filters.
-    if (!configure())
-    {
-        Serial.println("Failed to configure ICM-20948.");
+        Serial.println("ERROR: Wire.begin() failed");
         return false;
     }
 
-    // Initialise the magnetometer.
-    imu.startupMagnetometer();
+    Wire.setClock(100000);
+    delay(100);
 
-    Serial.println("IMU initialisation complete.");
+    Serial.println("I2C initialised.");
+    Serial.printf("I2C clock: %lu Hz\n", 100000UL);
 
-    return true;
+    // Continuously diagnose the bus.
+    while (true)
+    {
+        Serial.println("\n----------------------------------");
+        Serial.printf("Diagnostic time: %lu ms\n", millis());
+
+        // 1. Scan the I2C bus.
+        Serial.println("\n[2] Scanning I2C bus...");
+
+        int deviceCount = 0;
+
+        for (uint8_t address = 1; address < 127; address++)
+        {
+            Wire.beginTransmission(address);
+            uint8_t error = Wire.endTransmission();
+
+            if (error == 0)
+            {
+                Serial.printf("  DEVICE FOUND: 0x%02X\n", address);
+                deviceCount++;
+            }
+            else if (error != 2)
+            {
+                Serial.printf(
+                    "  Address 0x%02X: I2C error %u\n",
+                    address,
+                    error
+                );
+            }
+        }
+
+        Serial.printf("Devices found: %d\n", deviceCount);
+
+        // 2. Check both possible ICM-20948 addresses.
+        for (uint8_t address : {0x68, 0x69})
+        {
+            Serial.printf("\n[3] Testing address 0x%02X\n", address);
+
+            Wire.beginTransmission(address);
+            uint8_t txError = Wire.endTransmission(false);
+
+            Serial.printf("  Register selection result: %u\n", txError);
+
+            if (txError != 0)
+            {
+                Serial.println("  Device did not acknowledge.");
+                continue;
+            }
+
+            Wire.write((uint8_t)0x00); // WHO_AM_I register
+
+            uint8_t received = Wire.requestFrom(address, (uint8_t)1);
+
+            Serial.printf("  Bytes received: %u\n", received);
+
+            if (received == 1 && Wire.available())
+            {
+                uint8_t whoAmI = Wire.read();
+
+                Serial.printf("  WHO_AM_I: 0x%02X\n", whoAmI);
+
+                if (whoAmI == 0xEA)
+                {
+                    Serial.println("  SUCCESS: ICM-20948 identified!");
+                }
+                else
+                {
+                    Serial.println("  WARNING: Unexpected device ID.");
+                }
+            }
+            else
+            {
+                Serial.println("  ERROR: Failed to read WHO_AM_I.");
+            }
+        }
+
+        // 3. Attempt SparkFun library initialisation.
+        Serial.println("\n[4] Testing SparkFun library...");
+
+        // false = AD0 LOW, address 0x68.
+        // true  = AD0 HIGH, address 0x69.
+        imu.begin(Wire, false);
+
+        Serial.printf(
+            "  SparkFun status: %s\n",
+            imu.statusString()
+        );
+
+        if (imu.status == ICM_20948_Stat_Ok)
+        {
+            Serial.println("\nIMU INITIALISED SUCCESSFULLY!");
+
+            if (!configure())
+            {
+                Serial.println("Sensor configuration failed.");
+                return false;
+            }
+
+            Serial.println("Starting magnetometer...");
+            imu.startupMagnetometer();
+
+            Serial.println("IMU initialisation complete.");
+            return true;
+        }
+
+        Serial.println("  IMU initialisation failed.");
+
+        // 4. Bus voltage / recovery guidance.
+        Serial.println("\n[5] Diagnostic summary");
+        Serial.println("  Check SDA/SCL wiring.");
+        Serial.println("  Check 3.3V supply.");
+        Serial.println("  Check I2C pull-up resistors.");
+        Serial.println("  Check device address.");
+
+        Serial.println("\nRetrying in 3 seconds...");
+        delay(3000);
+    }
+
+    return false;
 }
+
+
+// bool ImuManager::begin()
+// {
+//     Serial.println("Initialising IMU...");
+
+//     // Initialise I2C.
+//     Wire.begin(SDA_PIN, SCL_PIN);
+//     Wire.setClock(I2C_CLOCK_HZ);
+
+//     // Initialise the ICM-20948.
+//     // false selects the default I2C address, normally 0x69.
+//     while (true)
+//     {
+//         imu.begin(Wire, false);
+
+//         if (imu.status == ICM_20948_Stat_Ok)
+//         {
+//             break;
+//         }
+
+//         Serial.print("Failed to initialise ICM-20948: ");
+//         Serial.println(imu.statusString());
+
+//         Serial.println("Retrying in 500 ms...");
+//         delay(500);
+//     }
+
+//     Serial.println("ICM-20948 detected.");
+
+//     // Configure sensor ranges, sample rates, and filters.
+//     if (!configure())
+//     {
+//         Serial.println("Failed to configure ICM-20948.");
+//         return false;
+//     }
+
+//     // Initialise the magnetometer.
+//     imu.startupMagnetometer();
+
+//     Serial.println("IMU initialisation complete.");
+
+//     return true;
+// }
 
 bool ImuManager::configure()
 {

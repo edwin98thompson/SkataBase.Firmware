@@ -1,7 +1,5 @@
 #include "BluetoothHandler.h"
 
-#include <string>
-
 namespace
 {
     constexpr char SERVICE_UUID[] =
@@ -121,7 +119,7 @@ BluetoothHandler::CharacteristicCallbacks::CharacteristicCallbacks(
 void BluetoothHandler::CharacteristicCallbacks::onWrite(
     BLECharacteristic* characteristic)
 {
-    const std::string command = characteristic->getValue();
+    const String command = characteristic->getValue();
     // The Android app writes this UTF-8 command to the IMU characteristic.
     if (command == CALIBRATE_MAGNETOMETER_COMMAND)
     {

@@ -9,7 +9,7 @@
 uint16_t sequence = 0;
 
 const char* DEVICE_NAME = "ESP32_SkateIMU";
-BluetoothHandler bleHandler;
+BluetoothHandler bleHandler(DEVICE_NAME);
 
 ImuManager imuManager;
 CalibrationHandler calibrationHandler;
@@ -17,11 +17,11 @@ CalibrationHandler calibrationHandler;
 constexpr float FILTER_RATE = 228.0f;
 constexpr float BETA = 0.08f;
 
-MotionFilter motionFilter;
+MotionFilter motionFilter(FILTER_RATE, BETA);
 
 // Timing Variables
 unsigned long lastSendTime = 0;
-const unsigned long sendInterval = 20; // 50Hz transmission rate
+const unsigned long sendInterval = 10; //100Hz transmission rate
 
 /// @brief Arduino setup function to initialize the IMU, motion filter, and BLE
 void setup()
@@ -29,13 +29,11 @@ void setup()
     Serial.begin(115200);
     Serial.println("🔌 Starting...");
 
-    if (!imuManager.begin())
+    while (!imuManager.begin())
     {
         Serial.println("IMU initialisation failed.");
-        while (true)
-        {
-            delay(1000);
-        }
+
+        delay(1000);
     }
 
     if (!calibrationHandler.begin())
@@ -47,10 +45,10 @@ void setup()
     calibrationHandler.calibrateAccelerometer(imuManager);
 
     // Implement motion filter
-    motionFilter = MotionFilter(FILTER_RATE, BETA);
+    // motionFilter = MotionFilter(FILTER_RATE, BETA);
 
     // BLE setup
-    bleHandler = BluetoothHandler(DEVICE_NAME);
+    // bleHandler = BluetoothHandler(DEVICE_NAME);
     bleHandler.begin();
 }
 
@@ -84,8 +82,8 @@ void loop()
     {
         // Update magnetometer calibration if in progress and apply any calibrations
         // to the packet before sending it over BLE.
-        calibrationHandler.updateMagnetometerCalibration(&packet);
-        calibrationHandler.apply(packet);
+        // calibrationHandler.updateMagnetometerCalibration(&packet);
+        // calibrationHandler.apply(packet);
 
         // Apply madgwick filter to the packet to compute orientation
         motionFilter.computeOrientation(
@@ -101,7 +99,7 @@ void loop()
             if (encodeImuPacket(packet, buffer, sizeof(buffer)))
             {
                 bleHandler.sendPacket(buffer, sizeof(buffer));
-                lastSendTime = millis();
+                lastSendTime = packet.timestampMs;
             }
         }
     }
