@@ -81,6 +81,7 @@ bool encodeImuPacket(
     writeFloat(packet.temperatureC, buffer);
 
     writeU8(packet.batteryPercent, buffer);
+    writeU8(packet.calibrationStatus, buffer);
 
     return offset == IMU_PACKET_SIZE;
 }

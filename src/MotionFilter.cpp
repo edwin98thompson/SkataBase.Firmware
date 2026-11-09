@@ -9,13 +9,25 @@ MotionFilter::MotionFilter(float filterRate, float beta)
     filter.beta = beta;
 }
 
-void MotionFilter::computeOrientation(ImuPacket& packet)
+void MotionFilter::computeOrientation(
+    ImuPacket& packet,
+    bool magnetometerCalibrated)
 {
-    // Update the filter with the latest sensor readings.
-    filter.update(
-        packet.gyroX, packet.gyroY, packet.gyroZ,
-        packet.accelX, packet.accelY, packet.accelZ,
-        packet.magX, packet.magY, packet.magZ);
+    // Update the filter with the latest sensor readings, if magnetometer calibration is available,
+    // use the magnetometer data; otherwise, use only the accelerometer and gyroscope data.
+    if (magnetometerCalibrated)
+    {
+        filter.update(
+            packet.gyroX, packet.gyroY, packet.gyroZ,
+            packet.accelX, packet.accelY, packet.accelZ,
+            packet.magX, packet.magY, packet.magZ);
+    }
+    else
+    {
+        filter.updateIMU(
+            packet.gyroX, packet.gyroY, packet.gyroZ,
+            packet.accelX, packet.accelY, packet.accelZ);
+    }
 
     // Retrieve the computed orientation angles in degrees.
     packet.roll = filter.getRoll();

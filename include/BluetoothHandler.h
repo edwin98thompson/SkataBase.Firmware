@@ -7,6 +7,7 @@
 
 #include <stddef.h>
 #include <stdint.h>
+#include <atomic>
 
 class BluetoothHandler
 {
@@ -19,6 +20,7 @@ public:
     void sendPacket(const uint8_t* data, size_t length);
 
     bool isConnected() const;
+    bool takeMagnetometerCalibrationRequest();
 
 private:
     BLEServer* pServer;
@@ -27,6 +29,7 @@ private:
     String deviceName;
     bool initialized;
     bool deviceConnected;
+    std::atomic<bool> calibrationRequestPending;
 
     class ServerCallbacks : public BLEServerCallbacks
     {
@@ -35,6 +38,17 @@ private:
 
         void onConnect(BLEServer* pServer) override;
         void onDisconnect(BLEServer* pServer) override;
+
+    private:
+        BluetoothHandler* parent;
+    };
+
+    class CharacteristicCallbacks : public BLECharacteristicCallbacks
+    {
+    public:
+        explicit CharacteristicCallbacks(BluetoothHandler* parent);
+
+        void onWrite(BLECharacteristic* characteristic) override;
 
     private:
         BluetoothHandler* parent;
