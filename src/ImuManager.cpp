@@ -1,12 +1,19 @@
 #include "ImuManager.h"
 
+#include <Arduino.h>
+#include <HardwareSerial.h>
 #include <Wire.h>
 
 // I2C pins for the Seeed XIAO ESP32-C6
 namespace
 {
-    constexpr uint8_t SDA_PIN = 22;
-    constexpr uint8_t SCL_PIN = 23;
+    // The Seeed XIAO ESP32-C6 has the following I2C pinout:
+    // constexpr uint8_t SDA_PIN = 22;
+    // constexpr uint8_t SCL_PIN = 23;
+
+    // Esp32 devkit v1 has the following I2C pinout:
+    constexpr uint8_t SDA_PIN = 21;
+    constexpr uint8_t SCL_PIN = 22;
 
     constexpr uint32_t I2C_CLOCK_HZ = 400000;
 
@@ -19,6 +26,7 @@ namespace
     constexpr float GYRO_SCALE = 16.4f;
 }
 
+/*
 
 bool ImuManager::begin()
 {
@@ -168,49 +176,51 @@ bool ImuManager::begin()
     return false;
 }
 
+*/
 
-// bool ImuManager::begin()
-// {
-//     Serial.println("Initialising IMU...");
 
-//     // Initialise I2C.
-//     Wire.begin(SDA_PIN, SCL_PIN);
-//     Wire.setClock(I2C_CLOCK_HZ);
+bool ImuManager::begin()
+{
+    Serial.println("Initialising IMU...");
 
-//     // Initialise the ICM-20948.
-//     // false selects the default I2C address, normally 0x69.
-//     while (true)
-//     {
-//         imu.begin(Wire, false);
+    // Initialise I2C.
+    Wire.begin(SDA_PIN, SCL_PIN);
+    Wire.setClock(I2C_CLOCK_HZ);
 
-//         if (imu.status == ICM_20948_Stat_Ok)
-//         {
-//             break;
-//         }
+    // Initialise the ICM-20948.
+    // false selects the default I2C address, normally 0x69.
+    while (true)
+    {
+        imu.begin(Wire, false);
 
-//         Serial.print("Failed to initialise ICM-20948: ");
-//         Serial.println(imu.statusString());
+        if (imu.status == ICM_20948_Stat_Ok)
+        {
+            break;
+        }
 
-//         Serial.println("Retrying in 500 ms...");
-//         delay(500);
-//     }
+        Serial.print("Failed to initialise ICM-20948: ");
+        Serial.println(imu.statusString());
 
-//     Serial.println("ICM-20948 detected.");
+        Serial.println("Retrying in 500 ms...");
+        delay(500);
+    }
 
-//     // Configure sensor ranges, sample rates, and filters.
-//     if (!configure())
-//     {
-//         Serial.println("Failed to configure ICM-20948.");
-//         return false;
-//     }
+    Serial.println("ICM-20948 detected.");
 
-//     // Initialise the magnetometer.
-//     imu.startupMagnetometer();
+    // Configure sensor ranges, sample rates, and filters.
+    if (!configure())
+    {
+        Serial.println("Failed to configure ICM-20948.");
+        return false;
+    }
 
-//     Serial.println("IMU initialisation complete.");
+    // Initialise the magnetometer.
+    imu.startupMagnetometer();
 
-//     return true;
-// }
+    Serial.println("IMU initialisation complete.");
+
+    return true;
+}
 
 bool ImuManager::configure()
 {

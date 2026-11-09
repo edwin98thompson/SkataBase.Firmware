@@ -46,6 +46,7 @@ private:
     bool collectingMagnetometer = false;
     uint32_t magnetometerStartMs = 0;
     uint32_t magnetometerDurationMs = 0;
+    uint32_t lastMagnetometerProgressMs = 0;
     uint32_t magnetometerSamples = 0;
     float magMinX = 0.0f;
     float magMinY = 0.0f;

@@ -1,4 +1,5 @@
 #include "BluetoothHandler.h"
+#include <string>
 
 namespace
 {
@@ -25,12 +26,8 @@ void BluetoothHandler::begin()
 {
     Serial.println("Initialising BLE...");
 
-    // Explicitly initialise BLE before creating the server.
-    if (!BLEDevice::init(deviceName))
-    {
-        Serial.println("ERROR: BLE initialisation failed");
-        return;
-    }
+    // Explicitly initialise BLE
+    BLEDevice::init(std::string(deviceName.c_str()));
 
     initialized = true;
     
@@ -67,7 +64,12 @@ void BluetoothHandler::sendPacket(
         return;
     }
 
-    pCharacteristic->setValue(data, length);
+    std::string payload(
+        reinterpret_cast<const char*>(data),
+        length
+    );
+
+    pCharacteristic->setValue(payload);
     pCharacteristic->notify();
 }
 
@@ -119,7 +121,7 @@ BluetoothHandler::CharacteristicCallbacks::CharacteristicCallbacks(
 void BluetoothHandler::CharacteristicCallbacks::onWrite(
     BLECharacteristic* characteristic)
 {
-    const String command = characteristic->getValue();
+    const std::string command = characteristic->getValue();
     // The Android app writes this UTF-8 command to the IMU characteristic.
     if (command == CALIBRATE_MAGNETOMETER_COMMAND)
     {

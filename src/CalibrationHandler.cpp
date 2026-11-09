@@ -9,6 +9,7 @@ bool CalibrationHandler::begin()
     // Read/write mode creates the namespace on first boot.
     if (!preferences.begin("imu-cal", false))
     {
+        Serial.println("Calibration: failed to open NVS namespace 'imu-cal'.");
         return false;
     }
 
@@ -17,6 +18,7 @@ bool CalibrationHandler::begin()
         && preferences.putBool("mag-valid", false) != 1)
     {
         preferences.end();
+        Serial.println("Calibration: failed to initialize NVS calibration state.");
         return false;
     }
 
@@ -44,14 +46,23 @@ bool CalibrationHandler::begin()
         magScaleZ = scaleZ;
         magnetometerCalibrated = true;
         calibrationStatus = CALIBRATION_COMPLETE;
+        Serial.printf(
+            "Calibration: loaded magnetometer calibration; "
+            "offset=(%.2f, %.2f, %.2f), scale=(%.3f, %.3f, %.3f).\n",
+            magOffsetX, magOffsetY, magOffsetZ,
+            magScaleX, magScaleY, magScaleZ);
     }
     else
     {
         magnetometerCalibrated = false;
         calibrationStatus = CALIBRATION_NOT_CALIBRATED;
+        Serial.println(stored
+            ? "Calibration: stored magnetometer data is invalid; recalibration required."
+            : "Calibration: no stored magnetometer calibration.");
     }
 
     storageReady = true;
+    Serial.println("Calibration: NVS ready.");
     return true;
 }
 
@@ -67,8 +78,19 @@ bool CalibrationHandler::calibrateGyroscope(
 {
     if (sampleCount == 0 || timeoutMs == 0)
     {
+        Serial.printf(
+            "Calibration: gyroscope calibration rejected "
+            "(sampleCount=%u, timeoutMs=%lu).\n",
+            static_cast<unsigned>(sampleCount),
+            static_cast<unsigned long>(timeoutMs));
         return false;
     }
+
+    Serial.printf(
+        "Calibration: gyroscope calibration started "
+        "(target=%u samples, timeout=%lu ms). Keep the IMU still.\n",
+        static_cast<unsigned>(sampleCount),
+        static_cast<unsigned long>(timeoutMs));
 
     float sumX = 0.0f;
     float sumY = 0.0f;
@@ -95,6 +117,12 @@ bool CalibrationHandler::calibrateGyroscope(
 
     if (samples != sampleCount)
     {
+        Serial.printf(
+            "Calibration: gyroscope calibration FAILED "
+            "(received %u/%u samples in %lu ms).\n",
+            static_cast<unsigned>(samples),
+            static_cast<unsigned>(sampleCount),
+            static_cast<unsigned long>(millis() - startMs));
         return false;
     }
 
@@ -102,6 +130,12 @@ bool CalibrationHandler::calibrateGyroscope(
     gyroOffsetX = sumX * inverseCount;
     gyroOffsetY = sumY * inverseCount;
     gyroOffsetZ = sumZ * inverseCount;
+    Serial.printf(
+        "Calibration: gyroscope calibration COMPLETE; "
+        "offset=(%.5f, %.5f, %.5f), samples=%u, elapsed=%lu ms.\n",
+        gyroOffsetX, gyroOffsetY, gyroOffsetZ,
+        static_cast<unsigned>(samples),
+        static_cast<unsigned long>(millis() - startMs));
     return true;
 }
 
@@ -117,8 +151,19 @@ bool CalibrationHandler::calibrateAccelerometer(
 {
     if (sampleCount == 0 || timeoutMs == 0)
     {
+        Serial.printf(
+            "Calibration: accelerometer calibration rejected "
+            "(sampleCount=%u, timeoutMs=%lu).\n",
+            static_cast<unsigned>(sampleCount),
+            static_cast<unsigned long>(timeoutMs));
         return false;
     }
+
+    Serial.printf(
+        "Calibration: accelerometer calibration started "
+        "(target=%u samples, timeout=%lu ms). Keep the IMU level and still.\n",
+        static_cast<unsigned>(sampleCount),
+        static_cast<unsigned long>(timeoutMs));
 
     float sumX = 0.0f;
     float sumY = 0.0f;
@@ -145,6 +190,12 @@ bool CalibrationHandler::calibrateAccelerometer(
 
     if (samples != sampleCount)
     {
+        Serial.printf(
+            "Calibration: accelerometer calibration FAILED "
+            "(received %u/%u samples in %lu ms).\n",
+            static_cast<unsigned>(samples),
+            static_cast<unsigned>(sampleCount),
+            static_cast<unsigned long>(millis() - startMs));
         return false;
     }
 
@@ -156,6 +207,12 @@ bool CalibrationHandler::calibrateAccelerometer(
     accelOffsetX = meanX;
     accelOffsetY = meanY;
     accelOffsetZ = meanZ - (meanZ < 0.0f ? -1.0f : 1.0f);
+    Serial.printf(
+        "Calibration: accelerometer calibration COMPLETE; "
+        "offset=(%.5f, %.5f, %.5f), samples=%u, elapsed=%lu ms.\n",
+        accelOffsetX, accelOffsetY, accelOffsetZ,
+        static_cast<unsigned>(samples),
+        static_cast<unsigned long>(millis() - startMs));
     return true;
 }
 
@@ -165,16 +222,37 @@ bool CalibrationHandler::calibrateAccelerometer(
 bool CalibrationHandler::startMagnetometerCalibration(
     uint32_t durationMs)
 {
-    if (!storageReady || collectingMagnetometer || durationMs == 0)
+    if (!storageReady)
     {
+        Serial.println(
+            "Calibration: magnetometer calibration rejected; NVS is not ready.");
+        return false;
+    }
+
+    if (collectingMagnetometer)
+    {
+        Serial.println(
+            "Calibration: magnetometer calibration rejected; one is already running.");
+        return false;
+    }
+
+    if (durationMs == 0)
+    {
+        Serial.println(
+            "Calibration: magnetometer calibration rejected; duration must be nonzero.");
         return false;
     }
 
     magnetometerStartMs = millis();
     magnetometerDurationMs = durationMs;
     magnetometerSamples = 0;
+    lastMagnetometerProgressMs = 0;
     collectingMagnetometer = true;
     calibrationStatus = CALIBRATION_IN_PROGRESS;
+    Serial.printf(
+        "Calibration: magnetometer calibration started for %lu ms. "
+        "Rotate the IMU through all orientations.\n",
+        static_cast<unsigned long>(durationMs));
     return true;
 }
 
@@ -211,15 +289,39 @@ void CalibrationHandler::updateMagnetometerCalibration(
     }
 
     // Keep collecting samples until the specified duration has elapsed.
-    if (millis() - magnetometerStartMs < magnetometerDurationMs)
+    const uint32_t elapsedMs = millis() - magnetometerStartMs;
+    if (elapsedMs < magnetometerDurationMs)
     {
+        if (elapsedMs - lastMagnetometerProgressMs >= 5000)
+        {
+            lastMagnetometerProgressMs = elapsedMs;
+            Serial.printf(
+                "Calibration: magnetometer progress %lu/%lu ms, "
+                "%lu samples; min=(%.2f, %.2f, %.2f), "
+                "max=(%.2f, %.2f, %.2f).\n",
+                static_cast<unsigned long>(elapsedMs),
+                static_cast<unsigned long>(magnetometerDurationMs),
+                static_cast<unsigned long>(magnetometerSamples),
+                magMinX, magMinY, magMinZ,
+                magMaxX, magMaxY, magMaxZ);
+        }
         return;
     }
 
     collectingMagnetometer = false;
+    Serial.printf(
+        "Calibration: magnetometer collection finished after %lu ms "
+        "with %lu samples.\n",
+        static_cast<unsigned long>(elapsedMs),
+        static_cast<unsigned long>(magnetometerSamples));
+
     if (magnetometerSamples < 100)
     {
         calibrationStatus = CALIBRATION_FAILED;
+        Serial.printf(
+            "Calibration: magnetometer calibration FAILED; "
+            "at least 100 samples are required (got %lu).\n",
+            static_cast<unsigned long>(magnetometerSamples));
         return;
     }
 
@@ -237,6 +339,10 @@ void CalibrationHandler::updateMagnetometerCalibration(
         || halfRangeZ < largestHalfRange * 0.2f)
     {
         calibrationStatus = CALIBRATION_FAILED;
+        Serial.printf(
+            "Calibration: magnetometer calibration FAILED; "
+            "insufficient axis coverage. Half-ranges=(%.2f, %.2f, %.2f).\n",
+            halfRangeX, halfRangeY, halfRangeZ);
         return;
     }
 
@@ -255,6 +361,9 @@ void CalibrationHandler::updateMagnetometerCalibration(
             offsetX, offsetY, offsetZ, scaleX, scaleY, scaleZ))
     {
         calibrationStatus = CALIBRATION_FAILED;
+        Serial.println(
+            "Calibration: magnetometer calibration FAILED; "
+            "could not save results to NVS.");
         return;
     }
 
@@ -267,6 +376,11 @@ void CalibrationHandler::updateMagnetometerCalibration(
     magScaleZ = scaleZ;
     magnetometerCalibrated = true;
     calibrationStatus = CALIBRATION_COMPLETE;
+    Serial.printf(
+        "Calibration: magnetometer calibration COMPLETE; "
+        "offset=(%.2f, %.2f, %.2f), scale=(%.3f, %.3f, %.3f).\n",
+        magOffsetX, magOffsetY, magOffsetZ,
+        magScaleX, magScaleY, magScaleZ);
 }
 
 /// @brief Save the magnetometer calibration data to non-volatile storage.
@@ -287,6 +401,8 @@ bool CalibrationHandler::saveMagnetometerCalibration(
 {
     if (!preferences.begin("imu-cal", false))
     {
+        Serial.println(
+            "Calibration: failed to open NVS while saving magnetometer results.");
         return false;
     }
 
@@ -307,6 +423,8 @@ bool CalibrationHandler::saveMagnetometerCalibration(
     if (!saved)
     {
         preferences.putBool("mag-valid", false);
+        Serial.println(
+            "Calibration: one or more magnetometer NVS writes failed.");
     }
     preferences.end();
     return saved;

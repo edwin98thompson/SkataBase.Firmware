@@ -15,7 +15,13 @@ ImuManager imuManager;
 CalibrationHandler calibrationHandler;
 
 constexpr float FILTER_RATE = 228.0f;
-constexpr float BETA = 0.08f;
+
+// Madgwick filter parameter; higher values result in faster convergence but more noise.
+
+// 0.08 for the XIAO ESP32-C6, 0.15 for the ESP32 DevKit v1
+
+// needs experimentation to find the best value for your specific IMU and application.
+constexpr float BETA = 0.35f;
 
 MotionFilter motionFilter(FILTER_RATE, BETA);
 
@@ -41,14 +47,9 @@ void setup()
         Serial.println("Failed to load calibration data from NVS.");
     }
 
-    calibrationHandler.calibrateGyroscope(imuManager);
-    calibrationHandler.calibrateAccelerometer(imuManager);
+    //calibrationHandler.calibrateGyroscope(imuManager);
+    //calibrationHandler.calibrateAccelerometer(imuManager);
 
-    // Implement motion filter
-    // motionFilter = MotionFilter(FILTER_RATE, BETA);
-
-    // BLE setup
-    // bleHandler = BluetoothHandler(DEVICE_NAME);
     bleHandler.begin();
 }
 
@@ -82,8 +83,8 @@ void loop()
     {
         // Update magnetometer calibration if in progress and apply any calibrations
         // to the packet before sending it over BLE.
-        // calibrationHandler.updateMagnetometerCalibration(&packet);
-        // calibrationHandler.apply(packet);
+        calibrationHandler.updateMagnetometerCalibration(&packet);
+        calibrationHandler.apply(packet);
 
         // Apply madgwick filter to the packet to compute orientation
         motionFilter.computeOrientation(
