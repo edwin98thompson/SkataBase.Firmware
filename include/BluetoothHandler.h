@@ -4,6 +4,8 @@
 #include <BLEDevice.h>
 #include <BLEServer.h>
 #include <BLECharacteristic.h>
+#include "CommandDecoder.h"
+#include "CommandPacket.h"
 
 #include <stddef.h>
 #include <stdint.h>
@@ -20,7 +22,7 @@ public:
     void sendPacket(const uint8_t* data, size_t length);
 
     bool isConnected() const;
-    bool takeMagnetometerCalibrationRequest();
+    bool takeCommand(CommandPacket& packet);
 
 private:
     BLEServer* pServer;
@@ -29,7 +31,14 @@ private:
     String deviceName;
     bool initialized;
     bool deviceConnected;
-    std::atomic<bool> calibrationRequestPending;
+    static constexpr uint8_t COMMAND_QUEUE_SIZE = 8;
+    CommandPacket commandQueue[COMMAND_QUEUE_SIZE] = {};
+    std::atomic<uint8_t> queueHead{0};
+    std::atomic<uint8_t> queueTail{0};
+    CommandDecoder commandDecoder;
+
+    static void enqueueDecodedCommand(const CommandPacket& packet, void* context);
+    void enqueueCommand(const CommandPacket& packet);
 
     class ServerCallbacks : public BLEServerCallbacks
     {

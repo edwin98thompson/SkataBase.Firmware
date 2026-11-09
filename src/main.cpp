@@ -5,6 +5,7 @@
 #include "ImuManager.h"
 #include "CalibrationHandler.h"
 #include "MotionFilter.h"
+#include "CommandHandler.h"
 
 uint16_t sequence = 0;
 
@@ -15,15 +16,14 @@ ImuManager imuManager;
 CalibrationHandler calibrationHandler;
 
 constexpr float FILTER_RATE = 228.0f;
-
 // Madgwick filter parameter; higher values result in faster convergence but more noise.
 
 // 0.08 for the XIAO ESP32-C6, 0.15 for the ESP32 DevKit v1
 
 // needs experimentation to find the best value for your specific IMU and application.
-constexpr float BETA = 0.35f;
+MotionFilter motionFilter(FILTER_RATE, CommandHandler::DEFAULT_BETA);
 
-MotionFilter motionFilter(FILTER_RATE, BETA);
+CommandHandler commandHandler(calibrationHandler, imuManager, motionFilter);
 
 // Timing Variables
 unsigned long lastSendTime = 0;
@@ -47,6 +47,8 @@ void setup()
         Serial.println("Failed to load calibration data from NVS.");
     }
 
+    commandHandler.begin();
+
     //calibrationHandler.calibrateGyroscope(imuManager);
     //calibrationHandler.calibrateAccelerometer(imuManager);
 
@@ -56,20 +58,11 @@ void setup()
 /// @brief Main loop for sampling IMU data and sending it over BLE
 void loop()
 {
-    // Check for magnetometer calibration request from BLE
-    if (bleHandler.takeMagnetometerCalibrationRequest())
+    // Process BLE commands on the main loop, outside the BLE callback task.
+    CommandPacket command;
+    while (bleHandler.takeCommand(command))
     {
-        if (calibrationHandler.startMagnetometerCalibration())
-        {
-            Serial.println(
-                "Magnetometer calibration started. Rotate the IMU "
-                "through all orientations for 30 seconds.");
-        }
-        else
-        {
-            Serial.println(
-                "Magnetometer calibration request rejected.");
-        }
+        commandHandler.handle(command);
     }
 
     // If the magnetometer calibration is in progress, update it with a null sample,
@@ -77,6 +70,8 @@ void loop()
     calibrationHandler.updateMagnetometerCalibration(nullptr);
 
     ImuPacket packet;
+    packet.betaValue = motionFilter.beta;
+
     uint8_t buffer[IMU_PACKET_SIZE];
 
     if (imuManager.readSample(packet))
@@ -96,6 +91,7 @@ void loop()
         {
             packet.sequence = sequence++;
             packet.timestampMs = millis();
+            packet.betaValue = motionFilter.beta;
 
             if (encodeImuPacket(packet, buffer, sizeof(buffer)))
             {

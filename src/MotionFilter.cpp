@@ -9,6 +9,12 @@ MotionFilter::MotionFilter(float filterRate, float beta)
     filter.beta = beta;
 }
 
+void MotionFilter::setBeta(float value)
+{
+    beta = value;
+    filter.beta = value;
+}
+
 void MotionFilter::computeOrientation(
     ImuPacket& packet,
     bool magnetometerCalibrated)

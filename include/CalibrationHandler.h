@@ -29,7 +29,7 @@ public:
     void apply(ImuPacket& packet) const;
     bool isMagnetometerCalibrated() const;
     CalibrationStatus status() const;
-
+    
 private:
     bool saveMagnetometerCalibration(
         float offsetX,
