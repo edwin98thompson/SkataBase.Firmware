@@ -5,6 +5,8 @@
 struct ImuPacket
 {
     // Protocol v2 appends calibrationStatus as byte 76.
+    // Protocol v3 appends betaValue as bytes 77-80.
+    // Protocol v4 appends gyroCalibrationEnabled and accelCalibrationEnabled as bytes 81-82.
     uint8_t protocolVersion = 3;
 
     uint16_t sequence = 0;
@@ -37,6 +39,10 @@ struct ImuPacket
     uint8_t calibrationStatus = 0;
 
     float betaValue = 0.0f;
+
+    // The following fields are added in protocol v4.
+    // bool gyroCalibrationEnabled;
+    // bool accelCalibrationEnabled;
 };
 
 enum CalibrationStatus : uint8_t

@@ -30,7 +30,9 @@ void CommandDecoder::feed(
             if (decodePacket(buffer, packet))
             {
                 if (callback != nullptr)
+                {
                     callback(packet, context);
+                }
             }
 
             bufferIndex = 0;

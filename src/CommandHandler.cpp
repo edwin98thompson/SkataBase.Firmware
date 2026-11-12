@@ -90,11 +90,17 @@ bool CommandHandler::handle(const CommandPacket& packet)
     case CMD_ENABLE_MAGNETOMETER_CALIBRATION:
     case CMD_DISABLE_MAGNETOMETER_CALIBRATION:
     case CMD_ENABLE_ACCELEROMETER_CALIBRATION:
+        calibration.toggleAccelerometerCalibration(true);
+        return true;
     case CMD_DISABLE_ACCELEROMETER_CALIBRATION:
+        calibration.toggleAccelerometerCalibration(false);
+        return true;
     case CMD_ENABLE_GYROSCOPE_CALIBRATION:
+        calibration.toggleGyroScopeCalibration(true);
+        return true;
     case CMD_DISABLE_GYROSCOPE_CALIBRATION:
-        Serial.printf("Command %u is not implemented by CalibrationHandler yet.\n", packet.commandId);
-        return false;
+        calibration.toggleGyroScopeCalibration(false);
+        return true;
     }
 
     Serial.printf("Unknown command ID: %u\n", packet.commandId);

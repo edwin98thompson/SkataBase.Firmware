@@ -16,11 +16,15 @@ public:
         uint16_t sampleCount = 500,
         uint32_t timeoutMs = 10000);
 
+    void toggleGyroScopeCalibration(bool enable);
+
     // Keep the board stationary and level, with its positive Z axis pointing up.
     bool calibrateAccelerometer(
         ImuManager& imu,
         uint16_t sampleCount = 500,
         uint32_t timeoutMs = 10000);
+
+    void toggleAccelerometerCalibration(bool enable);
 
     // Begin a non-blocking calibration; pass raw samples to update until complete.
     bool startMagnetometerCalibration(uint32_t durationMs = 30000);
@@ -70,4 +74,7 @@ private:
     float magScaleX = 1.0f;
     float magScaleY = 1.0f;
     float magScaleZ = 1.0f;
+
+    bool gyroCalibrationEnabled = false;
+    bool accelCalibrationEnabled = false;
 };
