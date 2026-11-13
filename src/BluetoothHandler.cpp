@@ -8,17 +8,16 @@ namespace
 
     constexpr char CHARACTERISTIC_UUID[] =
         "abcd1234-ab12-cd34-ef56-abcdef123456";
-    constexpr char CALIBRATE_MAGNETOMETER_COMMAND[] = "CALIBRATE_MAG";
 }
 
 BluetoothHandler::BluetoothHandler(const String& deviceName)
     : pServer(nullptr),
       pService(nullptr),
       pCharacteristic(nullptr),
-      deviceConnected(false),
-      calibrationRequestPending(false),
       deviceName(deviceName),
-      initialized(false)
+      initialized(false),
+      deviceConnected(false),
+      commandDecoder()
 {
 }
 
@@ -78,9 +77,34 @@ bool BluetoothHandler::isConnected() const
     return deviceConnected;
 }
 
-bool BluetoothHandler::takeMagnetometerCalibrationRequest()
+bool BluetoothHandler::takeCommand(CommandPacket& packet)
 {
-    return calibrationRequestPending.exchange(false);
+    const uint8_t tail = queueTail.load(std::memory_order_relaxed);
+    if (tail == queueHead.load(std::memory_order_acquire))
+        return false;
+
+    packet = commandQueue[tail];
+    queueTail.store((tail + 1) % COMMAND_QUEUE_SIZE, std::memory_order_release);
+    return true;
+}
+
+void BluetoothHandler::enqueueDecodedCommand(const CommandPacket& packet, void* context)
+{
+    static_cast<BluetoothHandler*>(context)->enqueueCommand(packet);
+}
+
+void BluetoothHandler::enqueueCommand(const CommandPacket& packet)
+{
+    const uint8_t head = queueHead.load(std::memory_order_relaxed);
+    const uint8_t next = (head + 1) % COMMAND_QUEUE_SIZE;
+    if (next == queueTail.load(std::memory_order_acquire))
+    {
+        Serial.println("Command queue full; dropping command.");
+        return;
+    }
+
+    commandQueue[head] = packet;
+    queueHead.store(next, std::memory_order_release);
 }
 
 // ----- Server callbacks -----
@@ -121,10 +145,17 @@ BluetoothHandler::CharacteristicCallbacks::CharacteristicCallbacks(
 void BluetoothHandler::CharacteristicCallbacks::onWrite(
     BLECharacteristic* characteristic)
 {
-    const std::string command = characteristic->getValue();
-    // The Android app writes this UTF-8 command to the IMU characteristic.
-    if (command == CALIBRATE_MAGNETOMETER_COMMAND)
+    std::string value = characteristic->getValue();
+
+    if (value.empty())
     {
-        parent->calibrationRequestPending.store(true);
+        return;
     }
+
+    parent->commandDecoder.feed(
+        reinterpret_cast<const uint8_t*>(value.data()),
+        value.size(),
+        BluetoothHandler::enqueueDecodedCommand,
+        parent
+    );
 }

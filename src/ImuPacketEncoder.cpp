@@ -2,6 +2,7 @@
 
 #include <cstring>
 #include <limits>
+#include <Arduino.h>
 
 static_assert(sizeof(float) == 4, "Requires 32-bit floats");
 static_assert(
@@ -82,6 +83,7 @@ bool encodeImuPacket(
 
     writeU8(packet.batteryPercent, buffer);
     writeU8(packet.calibrationStatus, buffer);
+    writeFloat(packet.betaValue, buffer);
 
     return offset == IMU_PACKET_SIZE;
 }

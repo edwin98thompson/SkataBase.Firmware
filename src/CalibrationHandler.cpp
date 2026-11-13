@@ -139,6 +139,16 @@ bool CalibrationHandler::calibrateGyroscope(
     return true;
 }
 
+/// @brief Toggle gyroscope calibration.
+/// @param enable 
+void CalibrationHandler::toggleGyroScopeCalibration(bool enable)
+{
+    gyroCalibrationEnabled = enable;
+    Serial.printf(
+        "Calibration: gyroscope calibration %s.\n",
+        enable ? "enabled" : "disabled");
+}
+
 /// @brief Calibrate the accelerometer by taking multiple samples and computing the average offset.
 /// @param imu The IMU manager instance.
 /// @param sampleCount The number of samples to take.
@@ -214,6 +224,16 @@ bool CalibrationHandler::calibrateAccelerometer(
         static_cast<unsigned>(samples),
         static_cast<unsigned long>(millis() - startMs));
     return true;
+}
+
+/// @brief Toggle accelerometer calibration.
+/// @param enable 
+void CalibrationHandler::toggleAccelerometerCalibration(bool enable)
+{
+    accelCalibrationEnabled = enable;
+    Serial.printf(
+        "Calibration: accelerometer calibration %s.\n",
+        enable ? "enabled" : "disabled");
 }
 
 /// @brief Start the magnetometer calibration process.
@@ -434,13 +454,19 @@ bool CalibrationHandler::saveMagnetometerCalibration(
 /// @param packet The IMU packet to calibrate.
 void CalibrationHandler::apply(ImuPacket& packet) const
 {
-    packet.gyroX -= gyroOffsetX;
-    packet.gyroY -= gyroOffsetY;
-    packet.gyroZ -= gyroOffsetZ;
+    if (gyroCalibrationEnabled)
+    {
+        packet.gyroX -= gyroOffsetX;
+        packet.gyroY -= gyroOffsetY;
+        packet.gyroZ -= gyroOffsetZ;
+    }
 
-    packet.accelX -= accelOffsetX;
-    packet.accelY -= accelOffsetY;
-    packet.accelZ -= accelOffsetZ;
+    if (accelCalibrationEnabled)
+    {
+        packet.accelX -= accelOffsetX;
+        packet.accelY -= accelOffsetY;
+        packet.accelZ -= accelOffsetZ;
+    }
 
     if (magnetometerCalibrated)
     {
