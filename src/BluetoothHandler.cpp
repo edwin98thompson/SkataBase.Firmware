@@ -1,5 +1,5 @@
 #include "BluetoothHandler.h"
-#include <string>
+#include "ImuPacketEncoder.h"
 
 namespace
 {
@@ -26,7 +26,11 @@ void BluetoothHandler::begin()
     Serial.println("Initialising BLE...");
 
     // Explicitly initialise BLE
-    BLEDevice::init(std::string(deviceName.c_str()));
+    BLEDevice::init(deviceName);
+    const esp_err_t mtuStatus = BLEDevice::setMTU(185);
+    Serial.printf("BLE local MTU: %u (set result %d)\n",
+                  static_cast<unsigned>(BLEDevice::getMTU()),
+                  static_cast<int>(mtuStatus));
 
     initialized = true;
     
@@ -52,7 +56,7 @@ void BluetoothHandler::begin()
 }
 
 void BluetoothHandler::sendPacket(
-    const uint8_t* data,
+    uint8_t* data,
     size_t length)
 {
     if (!deviceConnected ||
@@ -63,12 +67,7 @@ void BluetoothHandler::sendPacket(
         return;
     }
 
-    std::string payload(
-        reinterpret_cast<const char*>(data),
-        length
-    );
-
-    pCharacteristic->setValue(payload);
+    pCharacteristic->setValue(data, length);
     pCharacteristic->notify();
 }
 
@@ -120,9 +119,32 @@ void BluetoothHandler::ServerCallbacks::onConnect(
 {
     parent->deviceConnected = true;
 
-    Serial.println("BLE client connected");
+    const uint16_t connectionId = pServer->getConnId();
+    const uint16_t peerMtu = pServer->getPeerMTU(connectionId);
+    const uint16_t maxNotifySize = peerMtu > 3 ? peerMtu - 3 : 0;
+    Serial.printf("[BLE] connected: conn=%u peerMTU=%u maxNotify=%u packet=%u %s",
+                  static_cast<unsigned>(connectionId),
+                  static_cast<unsigned>(peerMtu),
+                  static_cast<unsigned>(maxNotifySize),
+                  static_cast<unsigned>(IMU_PACKET_SIZE),
+                  maxNotifySize >= IMU_PACKET_SIZE ? "fits" : "too small");
+    Serial.println();
 }
 
+void BluetoothHandler::ServerCallbacks::onMtuChanged(
+    BLEServer* pServer,
+    esp_ble_gatts_cb_param_t* param)
+{
+    const uint16_t peerMtu = param->mtu.mtu;
+    const uint16_t maxNotifySize = peerMtu > 3 ? peerMtu - 3 : 0;
+    Serial.printf("[BLE] MTU negotiated: conn=%u peerMTU=%u maxNotify=%u packet=%u %s",
+                  static_cast<unsigned>(param->mtu.conn_id),
+                  static_cast<unsigned>(peerMtu),
+                  static_cast<unsigned>(maxNotifySize),
+                  static_cast<unsigned>(IMU_PACKET_SIZE),
+                  maxNotifySize >= IMU_PACKET_SIZE ? "fits" : "too small");
+    Serial.println();
+}
 void BluetoothHandler::ServerCallbacks::onDisconnect(
     BLEServer* pServer)
 {
@@ -145,16 +167,16 @@ BluetoothHandler::CharacteristicCallbacks::CharacteristicCallbacks(
 void BluetoothHandler::CharacteristicCallbacks::onWrite(
     BLECharacteristic* characteristic)
 {
-    std::string value = characteristic->getValue();
+    auto value = characteristic->getValue();
 
-    if (value.empty())
+    if (value.length() == 0)
     {
         return;
     }
 
     parent->commandDecoder.feed(
-        reinterpret_cast<const uint8_t*>(value.data()),
-        value.size(),
+        reinterpret_cast<const uint8_t*>(value.c_str()),
+        value.length(),
         BluetoothHandler::enqueueDecodedCommand,
         parent
     );

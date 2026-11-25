@@ -13,6 +13,7 @@ const char* DEVICE_NAME = "ESP32_SkateIMU";
 BluetoothHandler bleHandler(DEVICE_NAME);
 
 ImuManager imuManager;
+
 CalibrationHandler calibrationHandler;
 
 constexpr float FILTER_RATE = 228.0f;
@@ -27,13 +28,13 @@ CommandHandler commandHandler(calibrationHandler, imuManager, motionFilter);
 
 // Timing Variables
 unsigned long lastSendTime = 0;
-const unsigned long sendInterval = 10; //100Hz transmission rate
+const unsigned long sendInterval = 20; //50Hz BLE congestion check
 
 /// @brief Arduino setup function to initialize the IMU, motion filter, and BLE
 void setup()
 {
     Serial.begin(115200);
-    Serial.println("🔌 Starting...");
+    Serial.println("Starting SkateData2026...");
 
     while (!imuManager.begin())
     {
@@ -48,7 +49,6 @@ void setup()
     }
 
     commandHandler.begin();
-
     //calibrationHandler.calibrateGyroscope(imuManager);
     //calibrationHandler.calibrateAccelerometer(imuManager);
 

@@ -1,254 +1,123 @@
 #include "ImuManager.h"
 
 #include <Arduino.h>
-#include <HardwareSerial.h>
-#include <Wire.h>
+#include <SPI.h>
 
-// I2C pins for the Seeed XIAO ESP32-C6
 namespace
 {
-    // The Seeed XIAO ESP32-C6 has the following I2C pinout:
-    // constexpr uint8_t SDA_PIN = 22;
-    // constexpr uint8_t SCL_PIN = 23;
+    // XIAO ESP32-C6: D8/GPIO19=SCK, D9/GPIO20=MISO, D10/GPIO18=MOSI.
+    // D3/GPIO21 is connected to the IMU CS/NCS pin.
+    constexpr uint8_t SPI_SCK_PIN = 19;
+    constexpr uint8_t SPI_MISO_PIN = 20;
+    constexpr uint8_t SPI_MOSI_PIN = 18;
+    constexpr uint8_t SPI_CS_PIN = 21;
+    constexpr uint32_t SPI_FREQUENCY_HZ = 1000000;
 
-    // Esp32 devkit v1 has the following I2C pinout:
-    constexpr uint8_t SDA_PIN = 21;
-    constexpr uint8_t SCL_PIN = 22;
-
-    constexpr uint32_t I2C_CLOCK_HZ = 400000;
-
-    // Sensor configuration
     constexpr uint8_t ACCEL_SAMPLE_RATE = 4;
     constexpr uint8_t GYRO_SAMPLE_RATE = 4;
 
-    // Conversion factors retained from the original main.cpp.
+    // The configured full-scale ranges are +/-4 g and +/-2000 dps.
     constexpr float ACCEL_SCALE = 8192.0f;
     constexpr float GYRO_SCALE = 16.4f;
+    constexpr uint8_t EXPECTED_WHO_AM_I = 0xEA;
 }
-
-/*
 
 bool ImuManager::begin()
 {
-    Serial.begin(115200);
     delay(1500);
+    Serial.println("[IMU] Initialising ICM-20948 over SPI...");
+    Serial.printf(
+        "[IMU] SPI pins SCK=%u MISO=%u MOSI=%u CS=%u at %lu Hz\n",
+        static_cast<unsigned>(SPI_SCK_PIN),
+        static_cast<unsigned>(SPI_MISO_PIN),
+        static_cast<unsigned>(SPI_MOSI_PIN),
+        static_cast<unsigned>(SPI_CS_PIN),
+        static_cast<unsigned long>(SPI_FREQUENCY_HZ));
 
-    Serial.println("\n==================================");
-    Serial.println("     ICM-20948 I2C DIAGNOSTICS");
-    Serial.println("==================================");
-
-    Serial.printf("SDA GPIO: %d\n", SDA_PIN);
-    Serial.printf("SCL GPIO: %d\n", SCL_PIN);
-
-    // Initialise I2C once.
-    Serial.println("\n[1] Initialising I2C...");
-
-    if (!Wire.begin(SDA_PIN, SCL_PIN))
+    if (!spiStarted)
     {
-        Serial.println("ERROR: Wire.begin() failed");
-        return false;
+        pinMode(SPI_CS_PIN, OUTPUT);
+        digitalWrite(SPI_CS_PIN, HIGH);
+        SPI.begin(SPI_SCK_PIN, SPI_MISO_PIN, SPI_MOSI_PIN, SPI_CS_PIN);
+        spiStarted = true;
+        delay(10);
     }
 
-    Wire.setClock(100000);
-    delay(100);
+    ICM_20948_Status_e beginStatus =
+        imu.begin(SPI_CS_PIN, SPI, SPI_FREQUENCY_HZ);
+    uint8_t whoAmI = imu.getWhoAmI();
 
-    Serial.println("I2C initialised.");
-    Serial.printf("I2C clock: %lu Hz\n", 100000UL);
+    Serial.printf(
+        "[IMU] SPI begin: %s; WHO_AM_I=0x%02X\n",
+        imu.statusString(beginStatus),
+        static_cast<unsigned>(whoAmI));
 
-    // Continuously diagnose the bus.
-    while (true)
+    // The standalone SPI test occasionally needed one short retry during
+    // startup. Keep that short recovery in the SPI path.
+    if (beginStatus != ICM_20948_Stat_Ok || whoAmI != EXPECTED_WHO_AM_I)
     {
-        Serial.println("\n----------------------------------");
-        Serial.printf("Diagnostic time: %lu ms\n", millis());
-
-        // 1. Scan the I2C bus.
-        Serial.println("\n[2] Scanning I2C bus...");
-
-        int deviceCount = 0;
-
-        for (uint8_t address = 1; address < 127; address++)
-        {
-            Wire.beginTransmission(address);
-            uint8_t error = Wire.endTransmission();
-
-            if (error == 0)
-            {
-                Serial.printf("  DEVICE FOUND: 0x%02X\n", address);
-                deviceCount++;
-            }
-            else if (error != 2)
-            {
-                Serial.printf(
-                    "  Address 0x%02X: I2C error %u\n",
-                    address,
-                    error
-                );
-            }
-        }
-
-        Serial.printf("Devices found: %d\n", deviceCount);
-
-        // 2. Check both possible ICM-20948 addresses.
-        for (uint8_t address : {0x68, 0x69})
-        {
-            Serial.printf("\n[3] Testing address 0x%02X\n", address);
-
-            Wire.beginTransmission(address);
-            uint8_t txError = Wire.endTransmission(false);
-
-            Serial.printf("  Register selection result: %u\n", txError);
-
-            if (txError != 0)
-            {
-                Serial.println("  Device did not acknowledge.");
-                continue;
-            }
-
-            Wire.write((uint8_t)0x00); // WHO_AM_I register
-
-            uint8_t received = Wire.requestFrom(address, (uint8_t)1);
-
-            Serial.printf("  Bytes received: %u\n", received);
-
-            if (received == 1 && Wire.available())
-            {
-                uint8_t whoAmI = Wire.read();
-
-                Serial.printf("  WHO_AM_I: 0x%02X\n", whoAmI);
-
-                if (whoAmI == 0xEA)
-                {
-                    Serial.println("  SUCCESS: ICM-20948 identified!");
-                }
-                else
-                {
-                    Serial.println("  WARNING: Unexpected device ID.");
-                }
-            }
-            else
-            {
-                Serial.println("  ERROR: Failed to read WHO_AM_I.");
-            }
-        }
-
-        // 3. Attempt SparkFun library initialisation.
-        Serial.println("\n[4] Testing SparkFun library...");
-
-        // false = AD0 LOW, address 0x68.
-        // true  = AD0 HIGH, address 0x69.
-        imu.begin(Wire, false);
+        Serial.println("[IMU] SPI init did not verify; retrying once...");
+        delay(100);
+        beginStatus = imu.begin(SPI_CS_PIN, SPI, SPI_FREQUENCY_HZ);
+        whoAmI = imu.getWhoAmI();
 
         Serial.printf(
-            "  SparkFun status: %s\n",
-            imu.statusString()
-        );
-
-        if (imu.status == ICM_20948_Stat_Ok)
-        {
-            Serial.println("\nIMU INITIALISED SUCCESSFULLY!");
-
-            if (!configure())
-            {
-                Serial.println("Sensor configuration failed.");
-                return false;
-            }
-
-            Serial.println("Starting magnetometer...");
-            imu.startupMagnetometer();
-
-            Serial.println("IMU initialisation complete.");
-            return true;
-        }
-
-        Serial.println("  IMU initialisation failed.");
-
-        // 4. Bus voltage / recovery guidance.
-        Serial.println("\n[5] Diagnostic summary");
-        Serial.println("  Check SDA/SCL wiring.");
-        Serial.println("  Check 3.3V supply.");
-        Serial.println("  Check I2C pull-up resistors.");
-        Serial.println("  Check device address.");
-
-        Serial.println("\nRetrying in 3 seconds...");
-        delay(3000);
+            "[IMU] SPI retry: %s; WHO_AM_I=0x%02X\n",
+            imu.statusString(beginStatus),
+            static_cast<unsigned>(whoAmI));
     }
 
-    return false;
-}
-
-*/
-
-
-bool ImuManager::begin()
-{
-    Serial.println("Initialising IMU...");
-
-    // Initialise I2C.
-    Wire.begin(SDA_PIN, SCL_PIN);
-    Wire.setClock(I2C_CLOCK_HZ);
-
-    // Initialise the ICM-20948.
-    // false selects the default I2C address, normally 0x69.
-    while (true)
+    if (beginStatus != ICM_20948_Stat_Ok || whoAmI != EXPECTED_WHO_AM_I)
     {
-        imu.begin(Wire, false);
-
-        if (imu.status == ICM_20948_Stat_Ok)
-        {
-            break;
-        }
-
-        Serial.print("Failed to initialise ICM-20948: ");
-        Serial.println(imu.statusString());
-
-        Serial.println("Retrying in 500 ms...");
-        delay(500);
-    }
-
-    Serial.println("ICM-20948 detected.");
-
-    // Configure sensor ranges, sample rates, and filters.
-    if (!configure())
-    {
-        Serial.println("Failed to configure ICM-20948.");
+        Serial.println("[IMU] ICM-20948 SPI initialisation failed.");
         return false;
     }
 
-    // Initialise the magnetometer.
-    imu.startupMagnetometer();
+    Serial.println("[IMU] ICM-20948 detected.");
 
-    Serial.println("IMU initialisation complete.");
+    if (!configure())
+    {
+        Serial.println("[IMU] ICM-20948 configuration failed.");
+        return false;
+    }
 
+    const ICM_20948_Status_e magStatus = imu.startupMagnetometer();
+    if (magStatus != ICM_20948_Stat_Ok)
+    {
+        Serial.printf(
+            "[IMU] Magnetometer initialisation failed: %s\n",
+            imu.statusString(magStatus));
+        return false;
+    }
+
+    Serial.println("[IMU] Initialisation complete.");
     return true;
 }
 
 bool ImuManager::configure()
 {
-    // Configure the gyroscope for +/- 2000 degrees per second.
     ICM_20948_fss_t gyroFSS;
-    gyroFSS.a = 0; // Unused for gyroscope.
+    gyroFSS.a = 0;
     gyroFSS.g = ICM_20948_GYRO_CONFIG_1_FS_SEL_e::dps2000;
 
     if (imu.setFullScale(ICM_20948_Internal_Gyr, gyroFSS)
         != ICM_20948_Stat_Ok)
     {
-        Serial.println("Failed to configure gyroscope range.");
+        Serial.println("[IMU] Failed to configure gyroscope range.");
         return false;
     }
 
-    // Configure the accelerometer for +/- 4 g.
     ICM_20948_fss_t accelFSS;
     accelFSS.a = ICM_20948_ACCEL_CONFIG_FS_SEL_e::gpm4;
-    accelFSS.g = 0; // Unused for accelerometer.
+    accelFSS.g = 0;
 
     if (imu.setFullScale(ICM_20948_Internal_Acc, accelFSS)
         != ICM_20948_Stat_Ok)
     {
-        Serial.println("Failed to configure accelerometer range.");
+        Serial.println("[IMU] Failed to configure accelerometer range.");
         return false;
     }
 
-    // Configure accelerometer and gyroscope sample rates.
     ICM_20948_smplrt_t sampleRate;
     sampleRate.a = ACCEL_SAMPLE_RATE;
     sampleRate.g = GYRO_SAMPLE_RATE;
@@ -256,90 +125,92 @@ bool ImuManager::configure()
     if (imu.setSampleRate(ICM_20948_Internal_Acc, sampleRate)
         != ICM_20948_Stat_Ok)
     {
-        Serial.println("Failed to configure accelerometer sample rate.");
+        Serial.println("[IMU] Failed to configure accelerometer sample rate.");
         return false;
     }
 
     if (imu.setSampleRate(ICM_20948_Internal_Gyr, sampleRate)
         != ICM_20948_Stat_Ok)
     {
-        Serial.println("Failed to configure gyroscope sample rate.");
+        Serial.println("[IMU] Failed to configure gyroscope sample rate.");
         return false;
     }
 
-    // Configure digital low-pass filters.
     ICM_20948_dlpcfg_t dlpf;
     dlpf.g = gyr_d119bw5_n154bw3;
     dlpf.a = acc_d111bw4_n136bw;
 
-    imu.enableDLPF(ICM_20948_Internal_Gyr, true);
-    imu.enableDLPF(ICM_20948_Internal_Acc, true);
+    if (imu.enableDLPF(ICM_20948_Internal_Gyr, true)
+            != ICM_20948_Stat_Ok
+        || imu.enableDLPF(ICM_20948_Internal_Acc, true)
+            != ICM_20948_Stat_Ok)
+    {
+        Serial.println("[IMU] Failed to enable digital low-pass filters.");
+        return false;
+    }
 
     if (imu.setDLPFcfg(ICM_20948_Internal_Gyr, dlpf)
         != ICM_20948_Stat_Ok)
     {
-        Serial.println("Failed to configure gyroscope DLPF.");
+        Serial.println("[IMU] Failed to configure gyroscope DLPF.");
         return false;
     }
 
     if (imu.setDLPFcfg(ICM_20948_Internal_Acc, dlpf)
         != ICM_20948_Stat_Ok)
     {
-        Serial.println("Failed to configure accelerometer DLPF.");
+        Serial.println("[IMU] Failed to configure accelerometer DLPF.");
         return false;
     }
 
-    Serial.println("ICM-20948 configuration complete.");
-
+    Serial.println("[IMU] Sensor ranges, sample rates, and filters configured.");
     return true;
 }
 
 bool ImuManager::readSample(ImuPacket& packet)
 {
-    // Return immediately when no fresh sample is available.
     if (!imu.dataReady())
     {
+        if (imu.status != ICM_20948_Stat_NoData)
+        {
+            static uint32_t lastErrorLogMs = 0;
+            const uint32_t nowMs = millis();
+            if (nowMs - lastErrorLogMs >= 1000)
+            {
+                Serial.printf(
+                    "[IMU] dataReady failed: %s\n",
+                    imu.statusString());
+                lastErrorLogMs = nowMs;
+            }
+        }
+
+        delay(1);
         return false;
     }
 
-    // Read the accelerometer, gyroscope, magnetometer, and temperature.
     imu.getAGMT();
+    if (imu.status != ICM_20948_Stat_Ok)
+    {
+        static uint32_t lastErrorLogMs = 0;
+        const uint32_t nowMs = millis();
+        if (nowMs - lastErrorLogMs >= 1000)
+        {
+            Serial.printf("[IMU] sample read failed: %s\n", imu.statusString());
+            lastErrorLogMs = nowMs;
+        }
+        return false;
+    }
 
-    // Accelerometer: convert to g.
-    const float ax = imu.agmt.acc.axes.x / ACCEL_SCALE;
-    const float ay = imu.agmt.acc.axes.y / ACCEL_SCALE;
-    const float az = imu.agmt.acc.axes.z / ACCEL_SCALE;
-
-    // Gyroscope: convert to degrees per second.
-    const float gx = imu.agmt.gyr.axes.x / GYRO_SCALE;
-    const float gy = imu.agmt.gyr.axes.y / GYRO_SCALE;
-    const float gz = imu.agmt.gyr.axes.z / GYRO_SCALE;
-
-    // Magnetometer readings.
-    const float mx = imu.agmt.mag.axes.x;
-    const float my = imu.agmt.mag.axes.y;
-    const float mz = imu.agmt.mag.axes.z;
-
-    // Temperature in degrees Celsius.
-    const float temperatureC =
-        imu.agmt.tmp.val / 333.87f + 21.0f;
-
-    // Populate the existing packet's sensor fields.
-    // Orientation and quaternion fields are handled by the orientation
-    // filter, while sequence and timestamp are handled by main.cpp.
-    packet.accelX = ax;
-    packet.accelY = ay;
-    packet.accelZ = az;
-
-    packet.gyroX = gx;
-    packet.gyroY = gy;
-    packet.gyroZ = gz;
-
-    packet.magX = mx;
-    packet.magY = my;
-    packet.magZ = mz;
-
-    packet.temperatureC = temperatureC;
+    packet.accelX = imu.agmt.acc.axes.x / ACCEL_SCALE;
+    packet.accelY = imu.agmt.acc.axes.y / ACCEL_SCALE;
+    packet.accelZ = imu.agmt.acc.axes.z / ACCEL_SCALE;
+    packet.gyroX = imu.agmt.gyr.axes.x / GYRO_SCALE;
+    packet.gyroY = imu.agmt.gyr.axes.y / GYRO_SCALE;
+    packet.gyroZ = imu.agmt.gyr.axes.z / GYRO_SCALE;
+    packet.magX = imu.agmt.mag.axes.x;
+    packet.magY = imu.agmt.mag.axes.y;
+    packet.magZ = imu.agmt.mag.axes.z;
+    packet.temperatureC = imu.agmt.tmp.val / 333.87f + 21.0f;
 
     return true;
 }

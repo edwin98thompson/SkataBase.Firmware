@@ -19,7 +19,7 @@ public:
     void begin();
 
     // Send binary data over BLE notifications.
-    void sendPacket(const uint8_t* data, size_t length);
+    void sendPacket(uint8_t* data, size_t length);
 
     bool isConnected() const;
     bool takeCommand(CommandPacket& packet);
@@ -47,6 +47,7 @@ private:
 
         void onConnect(BLEServer* pServer) override;
         void onDisconnect(BLEServer* pServer) override;
+        void onMtuChanged(BLEServer* pServer, esp_ble_gatts_cb_param_t* param) override;
 
     private:
         BluetoothHandler* parent;
