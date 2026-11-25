@@ -1,5 +1,6 @@
 # PlatformIO
 .pio/
+.pio-core/
 .piolibdeps/
 
 # Python cache
@@ -15,3 +16,4 @@ __pycache__/
 # Windows
 Thumbs.db
 Desktop.ini
+*.code-workspace

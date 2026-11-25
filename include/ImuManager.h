@@ -8,13 +8,11 @@ class ImuManager
 {
 public:
     bool begin();
-
-    // Reads a new sensor sample and populates the relevant
-    // sensor fields in the existing ImuPacket.
     bool readSample(ImuPacket& packet);
 
 private:
     bool configure();
 
-    ICM_20948_I2C imu;
+    ICM_20948_SPI imu;
+    bool spiStarted = false;
 };
