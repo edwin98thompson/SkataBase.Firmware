@@ -1,4 +1,4 @@
-# SkateData2026
+# SkateBase
 
 SkateData2026 is the sensor firmware for a skateboard session analytics system. A XIAO ESP32-C6 reads motion from an ICM-20948 IMU mounted on the skateboard setup, calculates orientation, and streams timestamped sensor data over Bluetooth Low Energy (BLE) to an Android phone. The phone is intended to receive and use this stream for analysing skateboard sessions, such as reviewing movement and ride data. This repository implements the device side of that connection; Android app functionality is not included here.
 
